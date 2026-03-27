@@ -1,10 +1,10 @@
-# EduMap - AI-Powered Course Management System
+# CAMP Course Alignment And Mapping Portal
 
-> An intelligent course management and outcome tracking platform leveraging AI/NLP to optimize educational program alignment and course design.
+> An intelligent course management and outcome tracking platform leveraging AI to optimize educational program alignment and course design.
 
 ---
 
-## 📋 Table of Contents
+##  Table of Contents
 
 - [Overview](#overview)
 - [Key Features](#key-features)
@@ -20,15 +20,15 @@
 
 ---
 
-## 🎯 Overview
+##  Overview
 
-EduMap is a comprehensive educational management platform designed to help institutions streamline course design, align learning outcomes, and track program effectiveness. By integrating AI and Natural Language Processing capabilities, the platform provides intelligent insights into curriculum alignment and educational quality assurance.
+CAMP is a comprehensive educational management platform designed to help institutions streamline course design, align learning outcomes, and track program effectiveness. By integrating AI and Natural Language Processing capabilities, the platform provides intelligent insights into curriculum alignment and educational quality assurance.
 
 **Developed for:** AICT College of Engineering
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
 - **Course Management** - Create, organize, and manage courses with detailed metadata
 - **Outcome Tracking** - Define and monitor Course Outcomes (CO) and Program Outcomes (PO)
@@ -249,15 +249,6 @@ http://localhost:8080/api
 - `GET /insights` - Retrieve AI-generated insights
 
 **For detailed API documentation**, refer to the Swagger/OpenAPI documentation at `/api/swagger-ui.html`
-
----
-
-## Contributing
-
-1. Create a feature branch: `git checkout -b feature/your-feature`
-2. Commit changes: `git commit -m 'Add your feature'`
-3. Push to branch: `git push origin feature/your-feature`
-4. Submit a Pull Request
 
 ### Code Standards
 - Follow Java naming conventions (camelCase)
