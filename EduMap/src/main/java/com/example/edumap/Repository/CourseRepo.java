@@ -1,6 +1,6 @@
 package com.example.edumap.Repository;
 
-import com.example.edumap.Entity.Course;
+import com.example.edumap.Entity.CO.Course;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

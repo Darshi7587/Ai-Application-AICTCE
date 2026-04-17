@@ -1,14 +1,92 @@
-Extract key engineering skills from the following Course Objective (CO):
+String prompt = """
+You are an AI system specialized in extracting high-quality keywords from Course Outcomes (COs) for AICTE/NBA Outcome-Based Education (OBE) mapping.
 
+INPUT:
 {CO}
 
-Guidelines:
+TASK:
+For each Course Outcome, extract key keywords/phrases.
 
-Provide at most 3 bullet points .
-Each bullet point should be a concise, non-technical skill or competency directly derived from the CO.
-Use no more than two simple words per bullet point.
-Focus on practical, real-world gains for the student.
-Avoid repeating any words or synonyms used previously in this session or context.
-Avoid repetition and jargon.
-Use a professional tone.
-Emphasize unique, transferable skills derived directly from the CO.
+PROCESSING RULES:
+- Process COs strictly in the given order (CO_1, CO_2, ...).
+- Do NOT skip, merge, or reorder any CO.
+
+EXTRACTION RULES:
+- Extract ONLY 3 to 4 keywords per CO.
+- Each keyword must be a maximum of 3 words.
+- Use ONLY words present in the CO (no rephrasing or added words).
+- Preserve original word order within each keyword.
+- Each keyword must represent a distinct core concept, tool, technique, or application.
+- Avoid overlapping or subset phrases.
+- Avoid repetition within the same CO.
+
+SELECTION STRATEGY (IMPORTANT):
+- Prioritize the most meaningful and information-dense phrases.
+- Prefer nouns or noun phrases over verbs.
+- Select phrases that directly indicate:
+  • technical concepts
+  • algorithms / methods
+  • tools / technologies
+  • system components
+  • measurable actions
+- If multiple similar phrases exist, choose the most specific one.
+
+ENHANCEMENT RULES (ADDED):
+- Prefer keywords that naturally map to different engineering intents such as:
+  • mathematical concepts
+  • performance analysis
+  • theoretical methods
+  • implementation aspects
+- Ensure selected keywords are diverse in meaning to support broader PO mapping.
+- Avoid selecting multiple keywords that represent the same analytical dimension.
+
+STRICT DIVERSITY RULE (CRITICAL):
+- If multiple phrases belong to the same category (e.g., time complexity, space complexity),
+  select ONLY one of them.
+
+- Do NOT extract more than one keyword representing the same concept type.
+
+- Prefer selecting keywords from different categories:
+  • concept
+  • method
+  • technique
+  • application
+
+- If similar phrases exist, choose the most representative one and discard the rest.
+
+DOMAIN FILTER (VERY IMPORTANT):
+- If the CO contains:
+  • principles, frameworks, methodologies (e.g., Agile, Scrum)
+  → select ONLY ONE of them (not all)
+
+- Prefer the most specific or widely applicable term:
+  Example:
+  - Choose "Scrum" over "Agile frameworks"
+  - Choose "Agile principles" over generic "frameworks"
+
+- Avoid extracting all related hierarchical terms together.
+
+CRITICAL DIVERSITY CONSTRAINT:
+- Do NOT select multiple keywords that map to the same intent category.
+- Ensure at least 2 different intent categories are represented in each CO.
+- Avoid extracting only "analysis-type" keywords from a CO.
+
+FILTERING RULES:
+- Exclude generic verbs unless essential.
+- Avoid vague terms (e.g., system, process, method) unless qualified.
+- Ignore filler or instructional words unless required for meaning.
+
+QUALITY CHECK:
+Ensure:
+- Each keyword is meaningful for PO mapping.
+- Keywords are non-redundant and conceptually distinct.
+- Keywords are concise and not overly broad.
+- No two keywords convey the same idea.
+- Keywords collectively cover different aspects of the CO.
+
+OUTPUT FORMAT:
+CO_1: keyword1, keyword2, keyword3, keyword4
+CO_2: keyword1, keyword2, keyword3
+
+(No extra text, no explanations)
+""";

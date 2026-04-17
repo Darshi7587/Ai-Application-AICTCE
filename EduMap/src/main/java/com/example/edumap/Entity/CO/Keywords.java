@@ -1,28 +1,31 @@
 package com.example.edumap.Entity.CO;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.util.ArrayList;
 import java.util.List;
 
+@Entity
 @Getter
 @Setter
-@Data
-@Entity
-@AllArgsConstructor
 @NoArgsConstructor
-@ToString
-public class Keywords{
+@AllArgsConstructor
+@ToString(exclude = {"courseOutcomes", "reasons"})
+public class Keywords {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    String keyword;
+    private String keyword;
 
-    @OneToMany(cascade = CascadeType.ALL)
-    List<Keyword_Pos> reasons=new ArrayList<>();
-
+    @JsonIgnore
     @ManyToOne
-    CourseOutcomes  courseOutcomes;
+    @JoinColumn(name = "co_id")
+    private CourseOutcomes courseOutcomes;
+
+    @OneToMany(mappedBy = "keyword", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Keyword_Pos> reasons = new ArrayList<>();
 }

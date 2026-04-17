@@ -1,6 +1,6 @@
 package com.example.edumap.Service;
 
-import com.example.edumap.Entity.Course;
+import com.example.edumap.Entity.CO.Course;
 import com.example.edumap.Repository.CourseRepo;
 import org.springframework.stereotype.Service;
 

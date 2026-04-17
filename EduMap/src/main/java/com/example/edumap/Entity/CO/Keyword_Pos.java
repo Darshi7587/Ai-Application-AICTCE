@@ -1,23 +1,26 @@
 package com.example.edumap.Entity.CO;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.ManyToOne;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.*;
 import lombok.*;
 
+@Entity
 @Getter
 @Setter
-@Data
-@Entity
-@AllArgsConstructor
 @NoArgsConstructor
-@ToString
+@AllArgsConstructor
+@ToString(exclude = "keyword")
 public class Keyword_Pos {
-    @Id
-    private Long id;
-    String Po;
-    String reason;
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String po;
+    private String reason;
+
+    @JsonIgnore
     @ManyToOne
+    @JoinColumn(name = "keyword_id")
     private Keywords keyword;
 }

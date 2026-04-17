@@ -1,5 +1,5 @@
-package com.example.edumap.Entity;
-import com.example.edumap.Entity.CO.CourseOutcomes;
+package com.example.edumap.Entity.CO;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
@@ -12,20 +12,19 @@ import lombok.Data;
 
 
 @Entity
-@NoArgsConstructor
-@Data
 @Getter
 @Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@ToString(exclude = "courseOutcomesList")
 public class Course {
 
     @Id
     private String courseCode;
 
     private String courseName;
-
     private String courseDescription;
 
-    @OneToMany
-    private List<CourseOutcomes> courseOutcomesList=new ArrayList<>();
-
+    @OneToMany(mappedBy = "course", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<CourseOutcomes> courseOutcomesList = new ArrayList<>();
 }

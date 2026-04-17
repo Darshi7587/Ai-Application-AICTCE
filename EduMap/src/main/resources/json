@@ -1,0 +1,367 @@
+{
+  "courseCode": "1",
+  "courseName": "java",
+  "courseDescription": "java is an object oriented programming language ",
+  "courseOutcomesList": [
+    {
+      "id": 1,
+      "CO": "Understand basic concepts and syntax of Java programming",
+      "keywords": [
+        {
+          "id": 1,
+          "keyword": "Problem solving",
+          "reasons": [
+            {
+              "id": 1,
+              "po": "PO1",
+              "reason": "engineering fundamentals"
+            },
+            {
+              "id": 2,
+              "po": "PO2",
+              "reason": "problem analysis"
+            },
+            {
+              "id": 3,
+              "po": "PO3",
+              "reason": "design solutions"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "keyword": "Logical thinking",
+          "reasons": [
+            {
+              "id": 4,
+              "po": "PO1",
+              "reason": "engineering fundamentals"
+            },
+            {
+              "id": 5,
+              "po": "PO2",
+              "reason": "problem analysis"
+            },
+            {
+              "id": 6,
+              "po": "PO4",
+              "reason": "design experiments"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "keyword": "Analytical skills",
+          "reasons": [
+            {
+              "id": 7,
+              "po": "PO2",
+              "reason": "problem analysis"
+            },
+            {
+              "id": 8,
+              "po": "PO4",
+              "reason": "analysis of data"
+            },
+            {
+              "id": 9,
+              "po": "PO12",
+              "reason": "life-long learning"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "keyword": "Self-learning",
+          "reasons": [
+            {
+              "id": 10,
+              "po": "PO12",
+              "reason": "life-long learning"
+            },
+            {
+              "id": 11,
+              "po": "PO9",
+              "reason": "effective participation"
+            },
+            {
+              "id": 12,
+              "po": "PO11",
+              "reason": "management principles"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "CO": "Apply object-oriented programming principles in Java",
+      "keywords": [
+        {
+          "id": 5,
+          "keyword": "Creative design",
+          "reasons": [
+            {
+              "id": 13,
+              "po": "PO3",
+              "reason": "design solutions"
+            },
+            {
+              "id": 14,
+              "po": "PO5",
+              "reason": "modern tools"
+            },
+            {
+              "id": 15,
+              "po": "PO7",
+              "reason": "impact assessment"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "keyword": "Structured thinking",
+          "reasons": [
+            {
+              "id": 16,
+              "po": "PO1",
+              "reason": "engineering fundamentals"
+            },
+            {
+              "id": 17,
+              "po": "PO2",
+              "reason": "problem analysis"
+            },
+            {
+              "id": 18,
+              "po": "PO4",
+              "reason": "data analysis"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "keyword": "Systematic approach",
+          "reasons": [
+            {
+              "id": 19,
+              "po": "PO1",
+              "reason": "engineering fundamentals"
+            },
+            {
+              "id": 20,
+              "po": "PO3",
+              "reason": "design solutions"
+            },
+            {
+              "id": 21,
+              "po": "PO4",
+              "reason": "design experiments"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "keyword": "Collaborative work",
+          "reasons": [
+            {
+              "id": 22,
+              "po": "PO9",
+              "reason": "effective participation"
+            },
+            {
+              "id": 23,
+              "po": "PO10",
+              "reason": "effective communication"
+            },
+            {
+              "id": 24,
+              "po": "PO12",
+              "reason": "life-long learning"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "CO": "Develop and execute Java programs for problem solving",
+      "keywords": [
+        {
+          "id": 9,
+          "keyword": "Critical thinking",
+          "reasons": [
+            {
+              "id": 25,
+              "po": "PO2",
+              "reason": "problem analysis"
+            },
+            {
+              "id": 26,
+              "po": "PO4",
+              "reason": "data analysis"
+            },
+            {
+              "id": 27,
+              "po": "PO5",
+              "reason": "modern tools"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "keyword": "Effective execution",
+          "reasons": [
+            {
+              "id": 28,
+              "po": "PO3",
+              "reason": "design solutions"
+            },
+            {
+              "id": 29,
+              "po": "PO5",
+              "reason": "appropriate techniques"
+            },
+            {
+              "id": 30,
+              "po": "PO10",
+              "reason": "effective communication"
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "keyword": "Innovative solutions",
+          "reasons": [
+            {
+              "id": 31,
+              "po": "PO3",
+              "reason": "design solutions"
+            },
+            {
+              "id": 32,
+              "po": "PO7",
+              "reason": "impact assessment"
+            },
+            {
+              "id": 33,
+              "po": "PO11",
+              "reason": "management principles"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "keyword": "Practical application",
+          "reasons": [
+            {
+              "id": 34,
+              "po": "PO1",
+              "reason": "engineering fundamentals"
+            },
+            {
+              "id": 35,
+              "po": "PO5",
+              "reason": "modern tools"
+            },
+            {
+              "id": 36,
+              "po": "PO12",
+              "reason": "life-long learning"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "CO": "Use Java libraries, exception handling and file handling",
+      "keywords": [
+        {
+          "id": 13,
+          "keyword": "Resource management",
+          "reasons": [
+            {
+              "id": 37,
+              "po": "PO5",
+              "reason": "modern tools"
+            },
+            {
+              "id": 38,
+              "po": "PO4",
+              "reason": "data analysis"
+            },
+            {
+              "id": 39,
+              "po": "PO3",
+              "reason": "design solutions"
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "keyword": "Error resolution",
+          "reasons": [
+            {
+              "id": 40,
+              "po": "PO2",
+              "reason": "problem analysis"
+            },
+            {
+              "id": 41,
+              "po": "PO10",
+              "reason": "effective communication"
+            },
+            {
+              "id": 42,
+              "po": "PO6",
+              "reason": "contextual knowledge"
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "keyword": "Data handling",
+          "reasons": [
+            {
+              "id": 43,
+              "po": "PO1",
+              "reason": "engineering fundamentals"
+            },
+            {
+              "id": 44,
+              "po": "PO4",
+              "reason": "data analysis"
+            },
+            {
+              "id": 45,
+              "po": "PO3",
+              "reason": "design solutions"
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "keyword": "Library usage",
+          "reasons": [
+            {
+              "id": 46,
+              "po": "PO5",
+              "reason": "modern tools"
+            },
+            {
+              "id": 47,
+              "po": "PO3",
+              "reason": "design solutions"
+            },
+            {
+              "id": 48,
+              "po": "PO12",
+              "reason": "life-long learning"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
