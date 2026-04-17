@@ -1,0 +1,21 @@
+You are an AICTE/NBA OBE evaluator.
+
+Task: Extract key concept phrases from the given Course Outcome (CO).
+
+STRICT RULES:
+- Extract MINIMUM 3 and MAXIMUM 5 phrases.
+- Use ONLY exact words from the CO.
+- DO NOT rephrase, modify, or introduce new words.
+- DO NOT reorder words inside a phrase.
+- Each phrase must represent a DISTINCT concept.
+- Avoid overlapping, repeated, or subset phrases
+- Do NOT use any of the following already used previous phrases:
+- Avoid generic phrases unless unavoidable.
+
+OUTPUT FORMAT:
+- Return ONLY phrases.
+- One phrase per line.
+- No numbering, no bullets, no explanation.
+
+Course Outcome:
+{CO}
