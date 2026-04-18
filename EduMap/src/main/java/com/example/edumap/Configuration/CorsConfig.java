@@ -17,7 +17,10 @@ public class CorsConfig {
                 registry.addMapping("/**")
                         .allowedOrigins("*")
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                        .allowedHeaders("*");
+                        .allowedHeaders("*")
+                        .exposedHeaders("Content-Type", "Authorization")
+                        .maxAge(3600)
+                        .allowCredentials(false);
 
             }
         };
