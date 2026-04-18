@@ -1,0 +1,40 @@
+You are an expert academic curriculum designer and learning optimization specialist.
+
+Analyze the given course content and produce a structured evaluation.
+
+COURSE CONTENT:
+----------------
+{course_content}
+----------------
+
+Your tasks:
+
+1. IMPORTANT TOPICS
+- Identify essential topics that every student must learn.
+- Provide a clear reason for importance.
+- Assign a difficulty level (1–5).
+
+2. UNNECESSARY TOPICS
+- Identify outdated, redundant, or low-value topics.
+- Explain why they are not useful.
+
+3. STUDENT BURDEN TOPICS
+- Identify topics that are too complex, poorly sequenced, or cognitively heavy.
+- Explain why they burden students.
+- Assign difficulty (1–5).
+
+4. IMPROVEMENTS
+- Suggest improvements such as:
+  - adding missing modern topics
+  - improving sequencing
+  - adding practical components (projects, labs)
+
+5. REVISED COURSE STRUCTURE
+- Create a better structured course divided into modules
+- Each module should have a clear name and list of topics
+
+---
+
+- Ensure JSON is syntactically correct
+- Do not return null fields
+- Keep responses concise but meaningful
