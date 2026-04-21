@@ -1,6 +1,6 @@
 //package com.example.edumap;
 //
-//import com.example.edumap.Service.AICourseGeneration;
+//import com.example.edumap.Service.AICOGeneration;
 //import com.example.edumap.Service.AiTools;
 //import lombok.extern.slf4j.Slf4j;
 //import org.junit.Test;
@@ -26,7 +26,7 @@
 //    private VectorStore vectorStore;
 //
 //    @Autowired
-//    private AICourseGeneration aiCourseGeneration;
+//    private AICOGeneration aiCourseGeneration;
 //
 //    @Autowired
 //    private ChatClient chatClient;

@@ -5,6 +5,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
 import org.springframework.ai.writer.FileDocumentWriter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -18,6 +19,8 @@ import java.util.stream.Collectors;
 public class AICourseModification {
 
     private final ChatClient chatClient ;
+    @Autowired
+    AiTools aiTools;
     public AICourseModification(ChatClient chatClient) {
         this.chatClient = chatClient;
     }
@@ -38,6 +41,7 @@ public class AICourseModification {
         return chatClient
                 .prompt()
                 .user(u -> u.text(promptResource).params(Map.of("course_content",text)))
+                .tools(aiTools)
                 .call()
                 .entity(CourseAnalysisResponse.class);
 

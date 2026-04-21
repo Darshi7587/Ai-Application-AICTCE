@@ -5,6 +5,7 @@ import com.example.edumap.Repository.CourseRepo;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
+import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -27,7 +28,7 @@ public class ProgramServices {
 
     private final CourseRepo courseRepo;
 
-    private final AICourseGeneration aiCourseGeneration;
+    private final AICOGeneration aiCourseGeneration;
 
 
     private final VectorStore vectorStore;
@@ -36,7 +37,7 @@ public class ProgramServices {
     private final AiTools tools;
 
     private final COMapperService coMapperService;
-    public ProgramServices(ChatClient chatClient, CourseRepo courseRepo, AICourseGeneration aiCourseGeneration,VectorStore vectorStore, AiTools tools,  COMapperService coMapperService) {
+    public ProgramServices(ChatClient chatClient, CourseRepo courseRepo, AICOGeneration aiCourseGeneration, VectorStore vectorStore, AiTools tools, COMapperService coMapperService) {
         this.chatClient = chatClient;
         this.courseRepo = courseRepo;
         this.aiCourseGeneration = aiCourseGeneration;
@@ -45,13 +46,14 @@ public class ProgramServices {
         this.coMapperService = coMapperService;
     }
 
+
     public Course addPOs(String courseId, List<String>COs){
         Optional<Course> courseOptional= courseRepo.findById(courseId);
         if(courseOptional.isEmpty())
             return null;
         Course course = courseOptional.get();
         List<result> resultList = new ArrayList<>();
-        List<List<String>> keys = aiCourseGeneration.CoKeyGeneration(COs, courseId);
+        List<List<String>> keys = aiCourseGeneration.CoKeyGeneration(COs);
         AtomicInteger i = new AtomicInteger();
         for(String co : COs){
 
@@ -76,8 +78,8 @@ public class ProgramServices {
         return null;
     }
 
-    record result(String co , List<Keywords> keywords){}
-    record Keywords(String keywords,List<keyword_reasons> reasons){ }
-    record keyword_reasons(String Po,String reason){}
+    public record result(String co , List<Keywords> keywords){}
+    public record Keywords(String keywords,List<keyword_reasons> reasons){ }
+    public record keyword_reasons(String Po,String reason){}
 
 }
