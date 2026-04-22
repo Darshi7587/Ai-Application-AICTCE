@@ -304,3 +304,8 @@ button{font-family:inherit;cursor:pointer}
 .rec-verdict-icon{font-size:28px;flex-shrink:0}
 .rec-verdict-text{font-size:14px;font-weight:600;color:#5DCAA5;line-height:1.6}
 .rec-verdict-sub{font-size:12px;color:#6B8EC7;margin-top:4px}
+
+/* ── MODE A UPLOAD ── */
+.mode-a-upload-zone{border:2px dashed #3A86FF;border-radius:16px;padding:48px 32px;text-align:center;cursor:pointer;transition:.2s;position:relative;background:#F8FBFE}
+.mode-a-upload-zone:hover,.mode-a-upload-zone.drag-over{border-color:#1D9E75;background:rgba(29,158,117,.05)}
+.mode-a-upload-zone input[type=file]{display:none}

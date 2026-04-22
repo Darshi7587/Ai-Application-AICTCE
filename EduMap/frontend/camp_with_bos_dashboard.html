@@ -167,28 +167,111 @@
     </div>
   </div>
   <div class="form-panel" id="step-3">
-    <div class="info-banner"><div style="font-size:16px;flex-shrink:0">ℹ️</div><p><strong>Mode A — Existing Syllabus Input.</strong> Paste your current unit-wise syllabus. CAMP will analyse it against your revised COs and generate an <strong>updated version</strong> with all changes marked.</p></div>
-    <div class="form-card">
-      <div class="fst">Existing Syllabus Content</div>
-      <div class="fss">Paste the current syllabus unit by unit. This is the baseline CAMP will update from.</div>
-      <div id="existing-unit-list"></div>
+    <div style="max-width:700px;margin:0 auto">
+      <div style="text-align:center;margin-bottom:40px">
+        <div style="font-size:32px;margin-bottom:12px">📄</div>
+        <h2 style="font-size:28px;font-weight:700;color:var(--navy);margin:0">Upload Your Course Syllabus</h2>
+        <p style="font-size:14px;color:var(--muted);margin-top:8px;line-height:1.6">CAMP will analyze your current PDF syllabus, extract course details, apply AI enhancements for current trends, calculate Bloom's levels and CO-PO mappings, then generate an updated PDF ready for BOS submission.</p>
+      </div>
+      
+      <div class="form-card" style="background:#F8FBFE;border:2px dashed #3A86FF;border-radius:16px;padding:40px;text-align:center">
+        <div id="upload-zone-modeA" class="mode-a-upload-zone"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="handlePdfDropModeA(event)">
+          <input type="file" id="pdf-input-modeA" accept=".pdf" onchange="handlePdfUploadModeA(this)" style="display:none"/>
+          <div style="cursor:pointer" onclick="document.getElementById('pdf-input-modeA').click()">
+            <div style="font-size:48px;margin-bottom:16px">📋</div>
+            <div style="font-size:18px;font-weight:600;color:var(--navy);margin-bottom:8px">Choose PDF or Drag & Drop</div>
+            <div style="font-size:13px;color:#5E6B83">Upload your course syllabus PDF (Max 20MB)</div>
+          </div>
+        </div>
+        
+        <div id="pdf-upload-result" style="display:none;margin-top:20px;text-align:left">
+          <div style="background:#fff;border-radius:12px;padding:16px;border:1px solid #E5E7EB">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <div style="font-size:24px;margin-top:2px">✅</div>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:600;color:var(--navy)" id="pdf-filename"></div>
+                <div style="font-size:12px;color:var(--muted);margin-top:4px" id="pdf-status"></div>
+              </div>
+              <button class="co-remove" onclick="clearPdfUploadModeA()" style="border:none;background:none;cursor:pointer;font-size:18px;padding:0">×</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="analysis-results" style="display:none;margin-top:40px">
+        <div style="background:#F0F9FF;border-left:4px solid #3A86FF;border-radius:8px;padding:16px;margin-bottom:24px">
+          <div style="font-size:12px;font-weight:600;color:#1E40AF">✓ PDF ANALYSIS COMPLETE</div>
+          <div style="font-size:13px;color:#1E3A8A;margin-top:4px">Your syllabus has been analyzed and structured below</div>
+        </div>
+
+        <!-- 1. Extracted COs -->
+        <div id="section-extracted-cos" style="display:none;margin-bottom:24px">
+          <div style="background:#fff;border-radius:12px;padding:18px;border:1px solid #E5E7EB;box-shadow:0 1px 2px rgba(0,0,0,.05)">
+            <div style="font-size:13px;font-weight:700;color:#1B3A6B;margin-bottom:12px;text-transform:uppercase">📌 Extracted Course Outcomes</div>
+            <div id="extracted-cos-list" style="display:grid;grid-template-columns:1fr;gap:8px"></div>
+          </div>
+        </div>
+
+        <!-- 2. Outdated/Unnecessary Topics (RED) -->
+        <div id="section-outdated" style="display:none;margin-bottom:24px">
+          <div style="background:#fff;border-radius:12px;padding:18px;border:1px solid #E5E7EB;box-shadow:0 1px 2px rgba(0,0,0,.05)">
+            <div style="font-size:13px;font-weight:700;color:#991B1B;margin-bottom:12px;text-transform:uppercase">⚠️ Outdated / Unnecessary Topics</div>
+            <div id="outdated-topics-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+          </div>
+        </div>
+
+        <!-- 3. Important Topics (GREEN) -->
+        <div id="section-important" style="display:none;margin-bottom:24px">
+          <div style="background:#fff;border-radius:12px;padding:18px;border:1px solid #E5E7EB;box-shadow:0 1px 2px rgba(0,0,0,.05)">
+            <div style="font-size:13px;font-weight:700;color:#065F46;margin-bottom:12px;text-transform:uppercase">✅ Important Topics Retained</div>
+            <div id="important-topics-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+          </div>
+        </div>
+
+        <!-- 4. Suggestions (BLUE) -->
+        <div id="section-improvements" style="display:none;margin-bottom:24px">
+          <div style="background:#fff;border-radius:12px;padding:18px;border:1px solid #E5E7EB;box-shadow:0 1px 2px rgba(0,0,0,.05)">
+            <div style="font-size:13px;font-weight:700;color:#1E40AF;margin-bottom:12px;text-transform:uppercase">🚀 Suggested Improvements</div>
+            <div id="improvements-list" style="display:grid;grid-template-columns:1fr;gap:8px"></div>
+          </div>
+        </div>
+
+        <!-- 5. Updated Syllabus -->
+        <div id="section-syllabus" style="display:none;margin-bottom:24px">
+          <div style="background:#fff;border-radius:12px;padding:18px;border:1px solid #E5E7EB;box-shadow:0 1px 2px rgba(0,0,0,.05)">
+            <div style="font-size:13px;font-weight:700;color:#1B3A6B;margin-bottom:12px;text-transform:uppercase">📘 Updated Syllabus (Generated)</div>
+            <div id="syllabus-structure"></div>
+          </div>
+        </div>
+      </div>
     </div>
+    
     <div class="wiz-nav">
-      <button class="btn btn-ghost" onclick="prevStep(3)">← Back</button>
-      <button class="btn btn-primary" onclick="nextStep(3)">Next: Textbooks →</button>
+      <button class="btn btn-ghost" id="step3-back-btn" onclick="prevStep(3)" style="display:none">← Back</button>
+      <button class="btn btn-primary" id="step3-next-btn" onclick="nextStep(3)" style="opacity:0.5;cursor:not-allowed" disabled>Next: Textbooks →</button>
     </div>
   </div>
   <div class="form-panel" id="step-books">
     <div class="info-banner" id="books-banner" style="display:none"><div style="font-size:16px;flex-shrink:0">✨</div><p><strong>Mode B — Syllabus will be auto-generated.</strong> You don't need to enter any syllabus content. CAMP will generate the full unit-wise topic structure from your course title and COs when you click Generate.</p></div>
     <div class="form-card">
       <div class="fst">Textbooks & References</div>
-      <div class="fss">Add prescribed textbooks and references. CAMP flags any book older than 8 years. (Min. 5 reference sources recommended.)</div>
-      <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px">Prescribed Textbooks</div>
-      <div id="textbook-list"></div>
-      <button class="add-btn" onclick="addBook('textbook-list','tb')" style="margin-bottom:24px">+ Add Textbook</button>
-      <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px">Reference Books</div>
-      <div id="ref-list"></div>
-      <button class="add-btn" onclick="addBook('ref-list','rb')">+ Add Reference Book</button>
+      <div class="fss">Upload a textbook/reference file to extract author names. Or leave empty to use defaults.</div>
+      
+      <div style="background:#F8FBFE;border:2px dashed #3A86FF;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px">
+        <input type="file" id="textbooks-file" accept=".pdf,.docx,.txt,.xlsx" onchange="handleTextbooksUpload(this)" style="display:none"/>
+        <div style="cursor:pointer;color:#1B3A6B" onclick="document.getElementById('textbooks-file').click()">
+          <div style="font-size:28px;margin-bottom:10px">📚</div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">Upload Textbook File (Optional)</div>
+          <div style="font-size:11px;color:var(--muted)">PDF, DOCX, TXT or XLSX</div>
+        </div>
+        <div id="textbooks-result" style="display:none;margin-top:12px;background:#fff;border:1px solid #3A86FF;border-radius:8px;padding:10px">
+          <div style="font-size:11px;color:var(--navy);margin-bottom:6px"><strong id="textbooks-filename"></strong> ✓</div>
+          <div style="font-size:10px;color:var(--muted)" id="textbooks-authors"></div>
+        </div>
+      </div>
     </div>
     <div class="wiz-nav">
       <button class="btn btn-ghost" onclick="backFromBooks()">← Back</button>
@@ -223,8 +306,21 @@
     </div>
     <div class="pcard">
       <div class="pcard-hdr"><div class="pcard-title">Bloom's Taxonomy Classification</div><span class="pbadge pb-auto">Auto Generated</span></div>
-      <div class="pcard-body">
-        <table class="btable"><thead><tr><th>CO</th><th>Outcome</th><th>Level</th></tr></thead><tbody id="blooms-tbody"></tbody></table>
+      <div class="pcard-body" style="overflow-x:auto">
+        <table class="btable" style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="background:var(--navy);color:#fff">
+              <th style="padding:10px;text-align:left;font-weight:600">CO#</th>
+              <th style="padding:10px;text-align:center;font-weight:600">Remember (L1)</th>
+              <th style="padding:10px;text-align:center;font-weight:600">Understand (L2)</th>
+              <th style="padding:10px;text-align:center;font-weight:600">Apply (L3)</th>
+              <th style="padding:10px;text-align:center;font-weight:600">Analyze (L4)</th>
+              <th style="padding:10px;text-align:center;font-weight:600">Evaluate (L5)</th>
+              <th style="padding:10px;text-align:center;font-weight:600">Create (L6)</th>
+            </tr>
+          </thead>
+          <tbody id="blooms-tbody" style="background:#fff"></tbody>
+        </table>
       </div>
     </div>
   </div>

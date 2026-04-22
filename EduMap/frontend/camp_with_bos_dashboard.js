@@ -1,162 +1,74 @@
-// ════════════════════════════════════════
-// STATE
-// ════════════════════════════════════════
-const S = {
-  mode:null, coCount:0, tbCount:0, rbCount:0,
-                  cos:[], coData:[], generatedSyllabus:[], existingUnits:[],
-  modStats:{added:0,removed:0,modified:0,same:0,modPct:0},
-  courseTitle:'', courseCode:'', courseSem:'', courseBranch:'',
-  benchmarkUploaded:false, benchmarkName:''
-};
+// ════════════════════════════════════════════════════════════════════════════════════
+// GLOBAL INITIALIZATION
+// ════════════════════════════════════════════════════════════════════════════════════
 
-// ════════════════════════════════════════
-// BACKEND API INTEGRATION
-// ════════════════════════════════════════
+// ✅ API Configuration
 const API_BASE = 'http://localhost:8081';
 
-async function createCourse(code, name, desc) {
-  try {
-    console.log('Sending course request:', { code, name, desc });
-    const response = await fetch(`${API_BASE}/course`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, name, desc })
-    });
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error(`HTTP ${response.status}:`, errText);
-      throw new Error(`HTTP ${response.status}: ${errText}`);
-    }
-    const data = await response.json();
-    console.log('Course created successfully:', data);
-    return data;
-  } catch (e) {
-    console.error('createCourse error:', e);
-    alert('Error creating course: ' + e.message);
-    return null;
-  }
-}
+// ✅ Program Outcomes (12 AICTE outcomes)
+const POS = ['PO1', 'PO2', 'PO3', 'PO4', 'PO5', 'PO6', 'PO7', 'PO8', 'PO9', 'PO10', 'PO11', 'PO12'];
 
-async function addCourseOutcomes(courseId, cos) {
-  try {
-    console.log('Adding COs:', { courseId, cos });
-    const response = await fetch(`${API_BASE}/add-cos`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ courseId, cos })
-    });
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error(`HTTP ${response.status}:`, errText);
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const data = await response.json();
-    console.log('COs added successfully:', data);
-    return data;
-  } catch (e) {
-    console.error('addCourseOutcomes error:', e);
-    alert('Error adding COs: ' + e.message);
-    return null;
-  }
-}
+// ✅ Bloom's Levels
+const BL = {
+  1: 'Remember',
+  2: 'Understand',
+  3: 'Apply',
+  4: 'Analyze',
+  5: 'Evaluate',
+  6: 'Create'
+};
 
-async function mapCOs(co, keywords) {
-  try {
-    const response = await fetch(`http://localhost:8081/comap`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ co, keywords })
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
-  } catch (e) {
-    console.error('mapCOs error:', e);
-    return null;
-  }
-}
+// ✅ Bloom's Level Descriptors
+const BV = {
+  6: ['create', 'design', 'develop', 'invent', 'construct', 'assemble'],
+  5: ['evaluate', 'critique', 'justify', 'assess', 'appraise'],
+  4: ['analyze', 'examine', 'investigate', 'distinguish', 'compare', 'differentiate'],
+  3: ['apply', 'implement', 'demonstrate', 'solve', 'use', 'practice'],
+  2: ['explain', 'describe', 'summarize', 'interpret', 'discuss', 'understand'],
+  1: ['define', 'list', 'recall', 'remember', 'identify', 'state']
+};
 
-async function getCourse(code) {
-  try {
-    const response = await fetch(`${API_BASE}/course?courseCode=${code}`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
-  } catch (e) {
-    console.error('getCourse error:', e);
-    return null;
-  }
-}
+// ✅ Bloom's Level to CSS Class Mapping
+const BC = {
+  1: 'c1',
+  2: 'c2',
+  3: 'c3',
+  4: 'c4',
+  5: 'c5',
+  6: 'c6'
+};
 
-async function downloadDocx() {
-  try {
-    if (!S.courseCode) {
-      alert('Please generate a course proposal first.');
-      return;
-    }
-    
-    console.log('Downloading .docx for course:', S.courseCode);
-    const response = await fetch(`${API_BASE}/export/docx`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        courseCode: S.courseCode,
-        courseTitle: S.courseTitle,
-        courseBranch: S.courseBranch,
-        courseSem: S.courseSem,
-        cos: S.cos,
-        syllabus: S.generatedSyllabus,
-        mode: S.mode
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: Failed to generate document`);
-    }
-    
-    // Get filename from Content-Disposition header if available
-    const contentDisposition = response.headers.get('Content-Disposition');
-    let filename = `${S.courseCode}_proposal.docx`;
-    if (contentDisposition && contentDisposition.includes('filename=')) {
-      filename = contentDisposition.split('filename=')[1].replace(/"/g, '');
-    }
-    
-    // Download the file
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    a.remove();
-    
-    console.log('Download successful:', filename);
-  } catch (e) {
-    console.error('downloadDocx error:', e);
-    alert('Error downloading document: ' + e.message);
-  }
-}
+// ✅ Global State Object
+const S = {
+  mode: null,                    // 'A' or 'B'
+  cos: [],                       // Course Outcomes from user input
+  coData: [],                    // CO data with keywords from backend
+  courseTitle: '',
+  courseCode: '',
+  courseSem: '',
+  courseBranch: '',
+  coCount: 0,                    // Number of CO input fields
+  tbCount: 0,                    // Number of textbook input fields
+  rbCount: 0,                    // Number of reference book input fields
+  generatedSyllabus: [],
+  existingUnits: [],
+  modStats: { added: 0, removed: 0, modified: 0, same: 0, modPct: 0 },
+  benchmarkName: '',
+  benchmarkUploaded: false,
+  pdfAnalysis: null,
+  analysisData: null
+};
 
-// ════════════════════════════════════════
-// BLOOM'S ENGINE
-// ════════════════════════════════════════
-const BV={6:['design','create','develop','construct','formulate','compose','produce','invent','generate','plan','propose','build'],5:['evaluate','assess','justify','critique','judge','defend','argue','appraise','select','recommend'],4:['analyze','analyse','differentiate','distinguish','examine','compare','contrast','investigate'],3:['apply','implement','use','execute','demonstrate','solve','calculate','operate','write','compute','utilize','perform'],2:['explain','describe','summarize','classify','identify','discuss','interpret','illustrate'],1:['define','list','recall','state','name','label','memorize','repeat','match','outline']};
-const BL={6:'Create (L6)',5:'Evaluate (L5)',4:'Analyze (L4)',3:'Apply (L3)',2:'Understand (L2)',1:'Remember (L1)'};
-const BC={6:'lp6',5:'lp5',4:'lp4',3:'lp3',2:'lp2',1:'lp1'};
-function dB(t){const l=t.toLowerCase();for(let i=6;i>=1;i--)for(const v of BV[i])if(l.includes(v))return i;return 3;}
+// ✅ Helper Functions
+function el(id) { return document.getElementById(id); }
+function dB(t) { const l = t.toLowerCase(); for (let i = 6; i >= 1; i--) for (const v of BV[i]) if (l.includes(v)) return i; return 3; }
 
-// ════════════════════════════════════════
-// CO-PO ENGINE — ARTICULATION MATRIX FORMULA
-// ════════════════════════════════════════
-const POS=['PO1','PO2','PO3','PO4','PO5','PO6','PO7','PO8','PO9','PO10','PO11','PO12'];
+// ✅ Program Outcome Statements (12 AICTE outcomes)
 const PO_STATEMENTS = {
-  PO1: "Engineering knowledge — Apply knowledge of mathematics, science, engineering fundamentals, and an engineering specialisation.",
-  PO2: "Problem analysis — Identify, formulate, review research literature, and analyze complex engineering problems.",
-  PO3: "Design/development of solutions — Design solutions for complex engineering problems and systems.",
-  PO4: "Conduct investigations — Use research-based knowledge and methods including design of experiments.",
+  PO1: "Engineering knowledge — Apply the knowledge of mathematics, science, engineering fundamentals, and an engineering specialization to solve complex engineering problems.",
+  PO2: "Problem analysis — Identify, formulate, review research literature, and analyze complex engineering problems reaching substantiated conclusions.",
+  PO3: "Design/development of solutions — Design solutions for complex engineering problems and design system components or processes that meet specified needs.",
+  PO4: "Conduct investigations of complex problems — Use research-based knowledge and research methods including design of experiments, analysis and interpretation of data.",
   PO5: "Modern tool usage — Create, select, and apply appropriate techniques and modern engineering tools.",
   PO6: "The engineer and society — Apply reasoning informed by contextual knowledge to assess societal issues.",
   PO7: "Environment and sustainability — Understand the impact of engineering solutions in societal and environmental contexts.",
@@ -167,6 +79,10 @@ const PO_STATEMENTS = {
   PO12: "Life-long learning — Recognise the need for, and have the preparation and ability to engage in independent learning."
 };
 
+// ════════════════════════════════════════════════════════════════════════════════════
+// CO-PO MAPPING ENGINE
+// ════════════════════════════════════════════════════════════════════════════════════
+
 // CO-PO Mapping Formula Based on Keyword Matching
 // Formula: Level = f(totalMatches / 3)
 // - totalMatches >= 2.25 (rawScore >= 0.75) → Level 3 (High)
@@ -175,75 +91,109 @@ const PO_STATEMENTS = {
 // - totalMatches < 0.75  (rawScore < 0.25)  → Level 0 (None)
 function computeMapping(co, poIndex) {
   if (!co || !co.keywords || !Array.isArray(co.keywords)) {
-    // Fallback to Bloom's-based if no keywords data
     return { matchedKeywords: [], unmatchedKeywords: [], totalMatches: 0, rawScore: 0, finalLevel: 0 };
   }
-  
+
   const poKey = `PO${poIndex}`;
-  let matchedKeywords = [], unmatchedKeywords = [], totalMatches = 0;
-  
+  let matchedKeywords = [];
+  let unmatchedKeywords = [];
+  let totalMatches = 0;
+
+  // ✅ Process each keyword from backend
   co.keywords.forEach(k => {
-    if (!k || !k.keyword) return; // Skip invalid keywords
+    // Backend structure: keyword (string), reasons (array)
+    const keywordText = k.keyword || '';
+    if (!keywordText) return;
+
+    // Ensure reasons is an array (never null)
+    const reasons = (k.reasons && Array.isArray(k.reasons)) ? k.reasons : [];
     
-    if (!k.reasons || !Array.isArray(k.reasons)) {
-      unmatchedKeywords.push({ keyword: k.keyword });
+    if (reasons.length === 0) {
+      unmatchedKeywords.push({ keyword: keywordText });
       return;
     }
-    
-    const matched = k.reasons
-      .filter(r => r && r.po === poKey && r.reason)
+
+    // ✅ Filter reasons that match this PO
+    // Backend uses: po (lowercase or uppercase)
+    const matched = reasons
+      .filter(r => r && (r.po === poKey || r.po === poKey.toLowerCase()) && r.reason)
       .map(r => r.reason);
-    
-    if (matched.length) {
-      matchedKeywords.push({ 
-        keyword: k.keyword, 
-        reasons: matched, 
-        count: matched.length 
+
+    if (matched.length > 0) {
+      // ✅ Keyword matched for this PO
+      matchedKeywords.push({
+        keyword: keywordText,
+        reasons: matched,
+        count: matched.length
       });
+      // ✅ Add count of matched reasons
       totalMatches += matched.length;
     } else {
-      unmatchedKeywords.push({ keyword: k.keyword });
+      // ✅ Keyword did not match for this PO
+      unmatchedKeywords.push({ keyword: keywordText });
     }
   });
-  
+
+  // ✅ FORMULA: totalMatches / 3 (NOT keyword percentage)
+  // Level based on total reasons matched across all keywords
   const rawScore = totalMatches / 3;
-  const finalLevel = rawScore >= 0.75 ? 3 : rawScore >= 0.5 ? 2 : rawScore >= 0.25 ? 1 : 0;
-  
-  return { matchedKeywords, unmatchedKeywords, totalMatches, rawScore, finalLevel };
+  const finalLevel = rawScore >= 0.75 ? 3 : rawScore >= 0.50 ? 2 : rawScore >= 0.25 ? 1 : 0;
+
+  return {
+    matchedKeywords,
+    unmatchedKeywords,
+    totalMatches,
+    rawScore,
+    finalLevel
+  };
 }
 
 function genCOPO(cos, cosWithKeywords = null) {
+  // ✅ DEBUG: Validate data alignment
+  if (cosWithKeywords && cosWithKeywords.length !== cos.length) {
+    console.warn(`⚠️ Data Length Mismatch: COs=${cos.length}, coData=${cosWithKeywords.length}`);
+    console.warn('This may indicate stale backend data or incorrect CO retrieval');
+    console.log('🔍 COs submitted:', cos);
+    console.log('🔍 coData returned:', cosWithKeywords.map((c, i) => ({ index: i, CO: c.CO, keywords: c.keywords?.length || 0 })));
+  }
+
   return cos.map((co, i) => {
     let pos = {};
-    
-    // Use keyword-based mapping if available, otherwise use Bloom's level fallback
-    const coData = cosWithKeywords && cosWithKeywords[i] ? cosWithKeywords[i] : { CO: co };
-    
+    const coData = cosWithKeywords && cosWithKeywords[i]
+      ? cosWithKeywords[i]
+      : { CO: co, keywords: [] };
+
+    // ✅ DEBUG: Log mapping source for this CO
+    const hasKeywords = coData.keywords && coData.keywords.length > 0;
+    if (hasKeywords) {
+      console.log(`📊 CO${i + 1}: Found ${coData.keywords.length} keywords from backend`);
+    }
+
     POS.forEach(p => {
       const poIndex = parseInt(p.replace('PO', ''));
-      
-      if (coData.keywords && Array.isArray(coData.keywords)) {
-        // Use keyword-based formula
-        const mapping = computeMapping(coData, poIndex);
-        pos[p] = mapping.finalLevel;
-      } else {
-        // Fallback: Use Bloom's level based algorithm
-        const l = co.toLowerCase();
-        const b = dB(co);
-        if ([1, 2, 3].includes(poIndex)) pos[p] = b >= 3 ? 3 : 2;
-        else if (poIndex === 4) pos[p] = b >= 4 ? 2 : (b >= 3 ? 1 : 0);
-        else if (poIndex === 5) pos[p] = (l.includes('implement') || l.includes('develop') || l.includes('build')) ? 3 : 2;
-        else if ([6, 7, 8, 9].includes(poIndex)) pos[p] = 0;
-        else if (poIndex === 10) pos[p] = (l.includes('write') || l.includes('document')) ? 2 : 0;
-        else if (poIndex === 11) pos[p] = 0;
-        else if (poIndex === 12) pos[p] = 3;
-      }
+      let level = 0;
+
+      // ✅ COMPUTE mapping ONLY using computeMapping()
+      // This ensures EXACT consistency with popup behavior
+      const mapping = computeMapping(coData, poIndex);
+      level = mapping.finalLevel;
+
+      // ✅ CRITICAL FIX: NO Bloom's fallback here!
+      // The popup uses computeMapping() result directly without fallback.
+      // To maintain consistency, the table must do the same.
+      // If keywords don't match a PO, level should be 0 (not fallback to Bloom's).
+
+      pos[p] = level;
     });
-    
-    return { co: `CO${i + 1}`, text: co, pos, data: coData };
+
+    return {
+      co: `CO${i + 1}`,
+      text: co,
+      pos,
+      data: coData
+    };
   });
 }
-
 // ════════════════════════════════════════
 // SYLLABUS GENERATION
 // ════════════════════════════════════════
@@ -252,7 +202,7 @@ function genSyllabus(title,cos,credits){const l=title.toLowerCase();const k=l.in
 function genUpdated(existing,cos){const ct=cos.join(' ').toLowerCase();let added=0,removed=0,modified=0,same=0;const units=existing.map((u,i)=>{const topics=(u.topics||'').split(/[,\n]+/).map(t=>t.trim()).filter(t=>t.length>2);const diff=topics.map(t=>{const tl=t.toLowerCase();if(tl.includes('legacy')||tl.includes('deprecated')||tl.includes('2.x')){removed++;return{text:t,type:'removed'};}if(modified<2&&Math.random()<0.15){modified++;return{text:t,type:'modified',newText:t+' (Updated for current standards)'};}same++;return{text:t,type:'same'};});if(i===0){diff.push({text:'Type Hints and Annotations (PEP 526)',type:'added'});added++;}if(i===2&&ct.includes('overload')){diff.push({text:'Protocol Classes and Structural Subtyping',type:'added'});added++;}return{num:i+1,title:u.title||`Unit ${i+1}`,diffTopics:diff};});const tot=added+removed+modified+same;const pct=tot>0?Math.round(((added+removed+modified)/tot)*100):22;return{units,stats:{added,removed,modified,same,modPct:pct}};}
 
 // ════════════════════════════════════════
-// CO-PO KEYWORD BREAKDOWN (Interactive)
+// CO-PO KEYWORD BREAKDOWN (Interactive Modal)
 // ════════════════════════════════════════
 function showCOPOBreakdown(coIndex, poIndex) {
   if (!S.coData || !S.coData[coIndex]) {
@@ -261,65 +211,205 @@ function showCOPOBreakdown(coIndex, poIndex) {
   }
   
   const co = S.coData[coIndex];
+  console.log('📊 POPUP: Computing mapping for CO' + (coIndex + 1) + ' → PO' + poIndex);
+  console.log('📊 POPUP: CO data:', co);
   const mapping = computeMapping(co, poIndex);
+  console.log('📊 POPUP: Final level =', mapping.finalLevel, '(rawScore:', mapping.rawScore.toFixed(3), ')');
   const poKey = `PO${poIndex}`;
   const poStmt = PO_STATEMENTS[poKey] || 'No statement available';
+  
+  // ✅ Create modal overlay
+  const modalId = 'copo-modal-' + Date.now();
+  const modal = document.createElement('div');
+  modal.id = modalId;
+  modal.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(27, 58, 107, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 16px;
+    backdrop-filter: blur(4px);
+  `;
+  
+  // ✅ Get level color - Dashboard themed
+  const levelColors = {
+    3: { bg: '#E1F5EE', color: '#1D9E75', border: '#85D4B8', label: 'High' },
+    2: { bg: '#E6F1FB', color: '#3A86FF', border: '#B5D4F4', label: 'Medium' },
+    1: { bg: '#F0F4FB', color: '#6B7280', border: '#D1DCF0', label: 'Low' },
+    0: { bg: '#F7F9FC', color: '#9CA3AF', border: '#E5E7EB', label: 'None' }
+  };
+  const lvlStyle = levelColors[mapping.finalLevel] || levelColors[0];
+  
+  // ✅ Create modal content
+  const content = document.createElement('div');
+  content.style.cssText = `
+    background: #fff;
+    border: 1.5px solid #D1DCF0;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 640px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #1A1A2E;
+    box-shadow: 0 10px 40px rgba(27, 58, 107, 0.15);
+  `;
+  
+  // ✅ Header
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding: 24px 28px 0;
+    flex-shrink: 0;
+    border-bottom: 1px solid #D1DCF0;
+  `;
+  
+  header.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+      <div>
+        <p style="margin: 0; font-size: 11px; color: #6B7280; text-transform: uppercase; font-weight: 700; letter-spacing: 0.12em;">CO–PO Keyword Breakdown</p>
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px;">
+          <p style="margin: 0; font-size: 18px; font-weight: 700; color: #1B3A6B;">PO${poIndex} Mapping</p>
+          <span style="display: inline-block; min-width: 34px; padding: 4px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; background: ${lvlStyle.bg}; color: ${lvlStyle.color}; border: 1.5px solid ${lvlStyle.border}; text-align: center;">L${mapping.finalLevel}</span>
+        </div>
+      </div>
+      <button onclick="document.getElementById('${modalId}').remove()" style="background: #F7F9FC; border: 1.5px solid #D1DCF0; border-radius: 8px; width: 32px; height: 32px; cursor: pointer; color: #6B7280; font-size: 14px; display: flex; align-items: center; justify-content: center; font-weight: 700; transition: 0.2s;">✕</button>
+    </div>
+    
+    <div style="background: #F0F4FB; border-radius: 10px; padding: 12px 16px; border-left: 3px solid #3A86FF; margin-bottom: 12px;">
+      <p style="margin: 0; font-size: 11px; color: #2E5BA8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">Course Outcome</p>
+      <p style="margin: 4px 0 0; font-size: 13px; color: #1A1A2E; line-height: 1.55; font-weight: 500;">${co.CO || co}</p>
+    </div>
+    
+    <div style="background: #E1F5EE; border-radius: 10px; padding: 12px 16px; border-left: 3px solid #1D9E75; margin-bottom: 16px;">
+      <p style="margin: 0; font-size: 11px; color: #085041; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">PO${poIndex}: Program Outcome</p>
+      <p style="margin: 4px 0 0; font-size: 13px; color: #1A1A2E; line-height: 1.55; font-weight: 500;">${poStmt}</p>
+    </div>
+    
+    <div style="display: flex; gap: 6px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #D1DCF0;">
+      <button onclick="closeKeywordModal('${modalId}', 'all')" style="padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; background: #1B3A6B; color: #fff; border: 1.5px solid #1B3A6B;">All (${mapping.matchedKeywords.length + mapping.unmatchedKeywords.length})</button>
+      <button onclick="closeKeywordModal('${modalId}', 'matched')" style="padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; background: transparent; color: #1D9E75; border: 1.5px solid #85D4B8;">✓ Matched (${mapping.matchedKeywords.length})</button>
+      <button onclick="closeKeywordModal('${modalId}', 'unmatched')" style="padding: 6px 14px; font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; background: transparent; color: #6B7280; border: 1.5px solid #D1DCF0;">✕ Unmatched (${mapping.unmatchedKeywords.length})</button>
+    </div>
+  `;
+  
+  // ✅ Body
+  const body = document.createElement('div');
+  body.style.cssText = `
+    overflow-y: auto;
+    padding: 20px 28px 28px;
+    flex: 1;
+  `;
   
   const allKeywords = [
     ...mapping.matchedKeywords.map(k => ({ ...k, matched: true })),
     ...mapping.unmatchedKeywords.map(k => ({ ...k, matched: false }))
   ];
   
-  const htmlContent = `
-    <div style="font-family:system-ui,-apple-system,sans-serif;background:#0f1419;color:#f0f0f0;padding:24px;border-radius:12px;max-width:700px;margin:20px auto;border:1px solid #2a2a2a">
-      <h3 style="margin:0 0 16px;font-size:16px;font-weight:700">CO${coIndex + 1} → ${poKey} Keyword Breakdown</h3>
-      
-      <div style="background:#1a1a1a;padding:14px;border-radius:8px;margin-bottom:16px;border-left:2px solid #f97316">
-        <div style="font-size:11px;color:#888;text-transform:uppercase;font-weight:700;margin-bottom:4px">${poKey} Statement</div>
-        <div style="font-size:13px;color:#ddd;line-height:1.6">${poStmt}</div>
-      </div>
-      
-      <div style="background:#1a1a1a;padding:14px;border-radius:8px;margin-bottom:16px">
-        <div style="font-size:11px;color:#888;text-transform:uppercase;font-weight:700;margin-bottom:8px">Keywords Matched (${mapping.matchedKeywords.length})</div>
-        <div style="font-size:12px;color:#ddd">
-          ${mapping.matchedKeywords.length > 0 
-            ? mapping.matchedKeywords.map(k => `<div style="margin-bottom:8px;padding:6px;background:#0a2e0a;border-left:2px solid #22c55e"><strong style="color:#22c55e">✓ ${k.keyword}</strong> (${k.count} match${k.count !== 1 ? 'es' : ''})</div>`).join('')
-            : '<div style="color:#666">No matched keywords</div>'}
+  // ✅ Keywords list
+  const keywordsList = allKeywords.map(k => `
+    <div style="margin-bottom: 12px; border-radius: 10px; border: 1.5px solid ${k.matched ? '#85D4B8' : '#D1DCF0'}; background: ${k.matched ? '#E1F5EE' : '#F7F9FC'}; overflow: hidden; transition: 0.2s;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1.5px solid ${k.matched ? '#85D4B8' : '#D1DCF0'};">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: ${k.matched ? '#1D9E75' : '#EF4444'};"></span>
+          <span style="font-size: 13px; font-weight: 600; padding: 2px 12px; border-radius: 8px; background: ${k.matched ? '#FFF' : '#F7F9FC'}; color: ${k.matched ? '#1D9E75' : '#6B7280'}; border: 1px solid ${k.matched ? '#85D4B8' : '#D1DCF0'};">${k.keyword}</span>
         </div>
+        <span style="font-size: 12px; font-weight: 600; color: ${k.matched ? '#1D9E75' : '#EF4444'}; background: ${k.matched ? '#E1F5EE' : '#FEF2F2'}; border: 1px solid ${k.matched ? '#85D4B8' : '#FECACA'}; padding: 3px 12px; border-radius: 8px;">${k.matched ? `+${k.count}` : '—'}</span>
       </div>
-      
-      <div style="background:#1a1a1a;padding:14px;border-radius:8px;margin-bottom:16px">
-        <div style="font-size:11px;color:#888;text-transform:uppercase;font-weight:700;margin-bottom:8px">Keywords Not Matched (${mapping.unmatchedKeywords.length})</div>
-        <div style="font-size:12px;color:#ddd">
-          ${mapping.unmatchedKeywords.length > 0 
-            ? mapping.unmatchedKeywords.map(k => `<div style="margin-bottom:4px;padding:6px;background:#2a0a0a;border-left:2px solid #ef4444"><span style="color:#ef4444">✗ ${k.keyword}</span></div>`).join('')
-            : '<div style="color:#666">All keywords matched</div>'}
-        </div>
+      <div style="padding: 12px 16px;">
+        ${k.matched 
+          ? k.reasons.map((r, j) => `
+              <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: ${j < k.reasons.length - 1 ? '6px' : '0'};">
+                <span style="color: #1D9E75; font-size: 12px; margin-top: 2px; flex-shrink: 0; font-weight: 700;">→</span>
+                <p style="margin: 0; font-size: 13px; color: #1A1A2E; line-height: 1.55;">${typeof r === 'string' ? r : (r.reason || r)}</p>
+              </div>`).join('')
+          : `<p style="margin: 0; font-size: 13px; color: #6B7280;">No direct mapping to <strong style="color: #1A1A2E; font-weight: 600;">PO${poIndex}</strong></p>`}
       </div>
-      
-      <div style="background:#0a1628;padding:14px;border-radius:8px;margin-bottom:16px;border:1px solid #1a2d50">
-        <div style="font-size:11px;color:#6B8EC7;text-transform:uppercase;font-weight:700;margin-bottom:12px">Level Calculation</div>
-        <div style="font-family:monospace;font-size:12px;color:#a0aec0;line-height:1.8">
-          <div><strong style="color:#f0f0f0">Total Keywords:</strong> ${allKeywords.length}</div>
-          <div><strong style="color:#f0f0f0">Matched Reasons:</strong> ${mapping.totalMatches}</div>
-          <div><strong style="color:#f0f0f0">Divisor:</strong> 3</div>
-          <div style="margin-top:8px;padding-top:8px;border-top:1px solid #1a2d50"><strong style="color:#f97316">Raw Score:</strong> ${mapping.totalMatches} ÷ 3 = ${mapping.rawScore.toFixed(4)}</div>
-        </div>
-      </div>
-      
-      <div style="background:#f97316;color:#000;padding:14px;border-radius:8px;text-align:center;font-weight:700">
-        <div style="font-size:11px;opacity:0.8;margin-bottom:4px">FINAL LEVEL</div>
-        <div style="font-size:24px">Level ${mapping.finalLevel}</div>
-        <div style="font-size:11px;opacity:0.8;margin-top:4px">
-          ${mapping.finalLevel === 3 ? 'High (rawScore ≥ 0.75)' 
-          : mapping.finalLevel === 2 ? 'Medium (rawScore ≥ 0.50)' 
-          : mapping.finalLevel === 1 ? 'Low (rawScore ≥ 0.25)' 
-          : 'None (rawScore < 0.25)'}
-        </div>
-      </div>
-    </div>`;
+    </div>
+  `).join('');
   
-  alert('CO→PO Breakdown:\n\n' + htmlContent.replace(/<[^>]*>/g, ''));
+  // ✅ Level calculation
+  const levelCalc = `
+    <div style="border-radius: 12px; border: 1.5px solid #D1DCF0; overflow: hidden; margin-top: 24px;">
+      <div style="background: #F0F4FB; padding: 12px 16px; border-bottom: 1.5px solid #D1DCF0;">
+        <p style="margin: 0; font-size: 11px; font-weight: 700; color: #2E5BA8; text-transform: uppercase; letter-spacing: 0.12em;">Mapping Algorithm</p>
+      </div>
+      <div style="padding: 16px 20px; background: #fff;">
+        <div style="font-family: 'Courier New', monospace; font-size: 12px; color: #1A1A2E; background: #F7F9FC; border-radius: 8px; padding: 14px 16px; border: 1px solid #D1DCF0; margin-bottom: 14px; line-height: 2.2;">
+          <div><span style="color: #6B7280;">Keywords:</span> <strong style="color: #1B3A6B;">${allKeywords.length}</strong> total — <span style="color: #1D9E75; font-weight: 700;">${mapping.matchedKeywords.length} matched</span> + <span style="color: #EF4444; font-weight: 700;">${mapping.unmatchedKeywords.length} unmatched</span></div>
+          <div><span style="color: #6B7280;">Match %:</span> <strong style="color: #1B3A6B;">${(mapping.matchedKeywords.length / allKeywords.length * 100).toFixed(0)}%</strong></div>
+          <div><span style="color: #6B7280;">Raw Score:</span> <strong style="color: #3A86FF;">${mapping.rawScore.toFixed(3)}</strong></div>
+        </div>
+        
+        <div style="margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; font-size: 11px; color: #6B7280; margin-bottom: 8px;">
+            <span>0.0</span>
+            <span style="color: #6B7280;">0.25 → L1</span>
+            <span style="color: #3A86FF;">0.50 → L2</span>
+            <span style="color: #1D9E75;">0.75 → L3</span>
+            <span>1.0</span>
+          </div>
+          <div style="position: relative; height: 8px; background: #E5E7EB; border-radius: 6px; overflow: hidden; border: 1px solid #D1DCF0;">
+            <div style="height: 100%; width: ${Math.min(mapping.rawScore, 1) * 100}%; background: linear-gradient(90deg, #3A86FF, #1D9E75); border-radius: 6px; min-width: ${mapping.rawScore > 0 ? '4px' : '0'};"></div>
+            <div style="position: absolute; top: 0; bottom: 0; left: 25%; width: 1px; background: #9CA3AF; opacity: 0.5;"></div>
+            <div style="position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: #9CA3AF; opacity: 0.5;"></div>
+            <div style="position: absolute; top: 0; bottom: 0; left: 75%; width: 1px; background: #9CA3AF; opacity: 0.5;"></div>
+          </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px;">
+          <div style="padding: 10px 14px; border-radius: 8px; background: ${mapping.finalLevel === 3 ? '#E1F5EE' : '#F7F9FC'}; border: 1.5px solid ${mapping.finalLevel === 3 ? '#85D4B8' : '#D1DCF0'}; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 11px; color: ${mapping.finalLevel === 3 ? '#085041' : '#6B7280'}; font-weight: 600;">≥ 0.75</span>
+            <span style="font-size: 12px; font-weight: 700; color: ${mapping.finalLevel === 3 ? '#1D9E75' : '#9CA3AF'};">L3</span>
+          </div>
+          <div style="padding: 10px 14px; border-radius: 8px; background: ${mapping.finalLevel === 2 ? '#E6F1FB' : '#F7F9FC'}; border: 1.5px solid ${mapping.finalLevel === 2 ? '#B5D4F4' : '#D1DCF0'}; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 11px; color: ${mapping.finalLevel === 2 ? '#1B3A6B' : '#6B7280'}; font-weight: 600;">≥ 0.50</span>
+            <span style="font-size: 12px; font-weight: 700; color: ${mapping.finalLevel === 2 ? '#3A86FF' : '#9CA3AF'};">L2</span>
+          </div>
+          <div style="padding: 10px 14px; border-radius: 8px; background: ${mapping.finalLevel === 1 ? '#F0F4FB' : '#F7F9FC'}; border: 1.5px solid ${mapping.finalLevel === 1 ? '#D1DCF0' : '#D1DCF0'}; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 11px; color: ${mapping.finalLevel === 1 ? '#1B3A6B' : '#6B7280'}; font-weight: 600;">≥ 0.25</span>
+            <span style="font-size: 12px; font-weight: 700; color: ${mapping.finalLevel === 1 ? '#6B7280' : '#9CA3AF'};">L1</span>
+          </div>
+          <div style="padding: 10px 14px; border-radius: 8px; background: #F7F9FC; border: 1.5px solid #D1DCF0; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 11px; color: #6B7280; font-weight: 600;">< 0.25</span>
+            <span style="font-size: 12px; font-weight: 700; color: #9CA3AF;">L0</span>
+          </div>
+        </div>
+        
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-radius: 10px; background: ${lvlStyle.bg}; border: 1.5px solid ${lvlStyle.border};">
+          <div>
+            <p style="margin: 0; font-size: 10px; font-weight: 700; color: ${lvlStyle.color}; text-transform: uppercase; letter-spacing: 0.1em;">Final Mapping Level</p>
+            <p style="margin: 4px 0 0; font-size: 13px; color: ${lvlStyle.color}; font-weight: 600;">
+              ${mapping.rawScore.toFixed(3)} → Level ${mapping.finalLevel} (${lvlStyle.label})
+            </p>
+          </div>
+          <span style="font-size: 36px; font-weight: 800; color: ${lvlStyle.color};">${mapping.finalLevel}</span>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  body.innerHTML = keywordsList + levelCalc;
+  
+  // ✅ Assemble and show
+  content.appendChild(header);
+  content.appendChild(body);
+  modal.appendChild(content);
+  
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.remove();
+  };
+  
+  document.body.appendChild(modal);
+}
+
+function closeKeywordModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) modal.remove();
 }
 
 // Update matrix table to be clickable
@@ -345,7 +435,365 @@ function goToPreview(){show('view-app');el('view-preview').style.display='block'
 function goToBOS(){buildBOSDashboard();show('view-bos');scroll(0,0);}
 function goToBOSDirect(){S.mode='A';S.cos=['Write simple computational programs using functions','Write programs to compute mathematical functions using loops','Write data processing scripts using string and dictionaries','Write classes using OOP features including inheritance','Apply NumPy package for data analysis','Write visualization scripts using pandas and matplotlib'];S.courseTitle='Introduction to Python Programming';S.courseCode='B22EFS415';S.courseSem='IV Semester';S.courseBranch='CSE';S.generatedSyllabus=genSyllabus('Python',S.cos,'3');S.existingUnits=S.generatedSyllabus.map((u,i)=>({title:u.title,topics:u.topics}));const r=genUpdated(S.existingUnits,S.cos);S.modStats=r.stats;buildBOSDashboard();show('view-bos');scroll(0,0);}
 function backToForm(){el('view-preview').style.display='none';el('wizard-shell').style.display='block';showStepById('step-books');scroll(0,0);}
-function backFromBooks(){S.mode==='A'?showStep(3):showStepById('step-books');}
+function backFromBooks(){S.mode==='A'?showStep(3):showStep(2);}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TEXTBOOKS UPLOAD HANDLER
+// ═══════════════════════════════════════════════════════════════════════
+let S_textbookAuthors = [];
+
+function handleTextbooksUpload(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const fileName = file.name;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    const authors = extractAuthors(text);
+    S_textbookAuthors = authors;
+    el('textbooks-filename').textContent = fileName;
+    el('textbooks-authors').innerHTML = authors.map(a => `<div>• ${a}</div>`).join('');
+    el('textbooks-result').style.display = 'block';
+    console.log('📚 Textbooks uploaded:', {file: fileName, authors: authors});
+  };
+  reader.readAsText(file);
+}
+
+function extractAuthors(text) {
+  const lines = text.split('\n');
+  const authors = [];
+  for (const line of lines) {
+    if (line.match(/^\s*(Author|By|Written by|Author Name|Authors):\s*(.+)/i)) {
+      const match = line.match(/:\s*(.+)$/i);
+      if (match) authors.push(match[1].trim());
+    }
+    if (line.match(/^[A-Z][a-z]+\s+[A-Z][a-z]+/) && authors.length < 10) {
+      const potential = line.split(/[,;]/)[0].trim();
+      if (potential.length > 5 && potential.length < 100) authors.push(potential);
+    }
+  }
+  return [...new Set(authors)].slice(0, 10);
+}
+
+function clearTextbooksUpload() {
+  S_textbookAuthors = [];
+  el('textbooks-file').value = '';
+  el('textbooks-result').style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// DOCX DOWNLOAD - GENERATES PROPERLY FORMATTED DOCUMENT
+// ═══════════════════════════════════════════════════════════════════════
+
+function downloadDocx() {
+  console.log('📥 Generating DOCX...');
+  
+  const courseTitle = S.courseTitle || 'Course Title';
+  const courseCode = S.courseCode || 'XXXXX';
+  const semester = S.courseSem || 'Semester';
+  const branch = S.courseBranch || 'Branch';
+  const credits = el('f-credits')?.value || '3';
+  const courseType = el('f-type')?.value || 'HC';
+  const overview = el('f-overview')?.value || 'Course Overview';
+  const assess = el('f-assess')?.value || 'CIE 50% / SEE 50%';
+  
+  const cos = S.cos;
+  const rows = genCOPO(cos, S.coData);
+  
+  let html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${courseCode} - ${courseTitle}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { 
+    font-family: 'Calibri', 'Arial', sans-serif; 
+    color: #000; 
+    line-height: 1.3; 
+    padding: 36pt;
+    page-margin: 36pt;
+  }
+  .page-break { page-break-after: always; }
+  h1 { font-size: 16pt; font-weight: bold; margin: 18pt 0 12pt 0; color: #1B3A6B; border-bottom: 2px solid #1B3A6B; padding-bottom: 6pt; }
+  h2 { font-size: 13pt; font-weight: bold; margin: 14pt 0 8pt 0; color: #1B3A6B; }
+  h3 { font-size: 12pt; font-weight: bold; margin: 10pt 0 6pt 0; }
+  p { font-size: 11pt; margin-bottom: 10pt; text-align: justify; line-height: 1.4; }
+  ol, ul { margin-left: 24pt; margin-bottom: 10pt; }
+  li { margin-bottom: 6pt; font-size: 11pt; }
+  table { width: 100%; border-collapse: collapse; margin: 12pt 0; font-size: 10pt; }
+  th { 
+    background-color: #1B3A6B; 
+    color: white; 
+    padding: 8pt; 
+    text-align: center;
+    font-weight: bold;
+    border: 1px solid #1B3A6B;
+  }
+  td { 
+    border: 1px solid #000; 
+    padding: 8pt; 
+    text-align: left;
+  }
+  td.center { text-align: center; }
+  tr:nth-child(even) { background-color: #f5f5f5; }
+  .header-table { margin: 12pt 0; }
+  .header-table td { border: 1px solid #000; padding: 6pt; }
+  .course-title { font-size: 12pt; font-weight: bold; margin-bottom: 6pt; }
+  .course-meta { font-size: 10pt; margin-bottom: 12pt; }
+  .note { font-size: 9pt; font-style: italic; color: #555; margin-top: 6pt; }
+</style>
+</head>
+<body>
+
+<!-- TITLE PAGE / HEADER -->
+<div style="margin-bottom: 24pt;">
+  <table class="header-table">
+    <tr>
+      <td style="width: 50%;"><strong>Course Title</strong></td>
+      <td>${courseTitle}</td>
+      <td style="width: 20%;"><strong>Course Type</strong></td>
+      <td style="width: 20%;">${courseType}</td>
+    </tr>
+    <tr>
+      <td><strong>Course Code</strong></td>
+      <td>${courseCode}</td>
+      <td><strong>Credits</strong></td>
+      <td>${credits}</td>
+    </tr>
+    <tr>
+      <td><strong>Semester</strong></td>
+      <td>${semester}</td>
+      <td><strong>Branch</strong></td>
+      <td>${branch}</td>
+    </tr>
+  </table>
+</div>
+
+<!-- COURSE STRUCTURE -->
+<h1>COURSE STRUCTURE</h1>
+<table>
+  <thead>
+    <tr>
+      <th>Component</th>
+      <th>L</th>
+      <th>T</th>
+      <th>P</th>
+      <th>Credits</th>
+      <th>Contact Hours</th>
+      <th>Workload</th>
+      <th>Assessment</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Lecture</td>
+      <td class="center">3</td>
+      <td class="center">-</td>
+      <td class="center">-</td>
+      <td class="center">${credits}</td>
+      <td class="center">42</td>
+      <td class="center">${credits}</td>
+      <td>${assess}</td>
+    </tr>
+    <tr>
+      <td>Tutorial</td>
+      <td class="center">-</td>
+      <td class="center">-</td>
+      <td class="center">-</td>
+      <td class="center">-</td>
+      <td class="center">-</td>
+      <td class="center">-</td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td>Practical</td>
+      <td class="center">-</td>
+      <td class="center">-</td>
+      <td class="center">-</td>
+      <td class="center">-</td>
+      <td class="center">-</td>
+      <td class="center">-</td>
+      <td>—</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- COURSE OVERVIEW -->
+<h1>COURSE OVERVIEW</h1>
+<p>${overview}</p>
+
+<!-- COURSE OBJECTIVES -->
+<h1>COURSE OBJECTIVES</h1>
+<p>The objectives of this course are to:</p>
+<ol>`;
+
+cos.forEach((co, i) => {
+  const verb = co.split(' ')[0];
+  html += `<li>${verb.charAt(0).toUpperCase() + verb.slice(1)} ${co.substring(co.indexOf(' ')+1, 100)}</li>`;
+});
+
+html += `
+</ol>
+
+<!-- COURSE OUTCOMES -->
+<h1>COURSE OUTCOMES</h1>
+<p>After completion of the course, the student will be able to:</p>
+<table>
+  <thead>
+    <tr>
+      <th>CO#</th>
+      <th>Course Outcomes</th>
+      <th>POs</th>
+      <th>PSOs</th>
+    </tr>
+  </thead>
+  <tbody>`;
+
+cos.forEach((co, i) => {
+  const poList = rows[i]?.pOs ? rows[i].pOs.split(',').slice(0, 5).join(',') : '1,2,3,4,5,12';
+  html += `
+    <tr>
+      <td class="center"><strong>CO${i+1}</strong></td>
+      <td>${co}</td>
+      <td class="center">${poList}</td>
+      <td class="center">1, 2, 3</td>
+    </tr>`;
+});
+
+html += `
+  </tbody>
+</table>
+
+<!-- BLOOM'S LEVEL -->
+<h1>BLOOM'S LEVEL OF COURSE OUTCOMES</h1>
+<table>
+  <thead>
+    <tr>
+      <th class="center">CO#</th>
+      <th class="center">Remember (L1)</th>
+      <th class="center">Understand (L2)</th>
+      <th class="center">Apply (L3)</th>
+      <th class="center">Analyze (L4)</th>
+      <th class="center">Evaluate (L5)</th>
+      <th class="center">Create (L6)</th>
+    </tr>
+  </thead>
+  <tbody>`;
+
+cos.forEach((co, i) => {
+  const detectedLevel = dB(co);
+  let row = `<tr><td class="center"><strong>CO${i+1}</strong></td>`;
+  for (let lv = 1; lv <= 6; lv++) {
+    row += `<td class="center">${lv === detectedLevel ? '✓' : ''}</td>`;
+  }
+  row += `</tr>`;
+  html += row;
+});
+
+html += `
+  </tbody>
+</table>
+
+<!-- CO-PO ARTICULATION MATRIX -->
+<div class="page-break"></div>
+<h1>COURSE ARTICULATION MATRIX</h1>
+<p class="note"><strong>Note:</strong> 1=Low, 2=Medium, 3=High</p>
+<table style="font-size: 9pt;">
+  <thead>
+    <tr>
+      <th>CO#/POs</th>`;
+
+POS.forEach(po => {
+  html += `<th class="center">${po}</th>`;
+});
+
+html += `</tr>
+  </thead>
+  <tbody>`;
+
+rows.forEach((r, i) => {
+  html += `<tr><td class="center"><strong>CO${i+1}</strong></td>`;
+  POS.forEach(po => {
+    const val = r.pos[po];
+    const display = val > 0 ? val : '—';
+    html += `<td class="center">${display}</td>`;
+  });
+  html += `</tr>`;
+});
+
+html += `
+  </tbody>
+</table>
+
+<!-- COURSE CONTENT -->
+<div class="page-break"></div>
+<h1>COURSE CONTENT</h1>`;
+
+if (S.generatedSyllabus && S.generatedSyllabus.length > 0) {
+  S.generatedSyllabus.forEach((unit, i) => {
+    html += `<h2>UNIT ${i+1}${unit.title ? ': ' + unit.title : ''}</h2>`;
+    if (unit.topics) {
+      let topicsText = '';
+      if (Array.isArray(unit.topics)) {
+        topicsText = unit.topics.join(', ');
+      } else if (typeof unit.topics === 'string') {
+        topicsText = unit.topics;
+      } else if (typeof unit.topics === 'object') {
+        topicsText = JSON.stringify(unit.topics);
+      }
+      if (topicsText) {
+        html += `<p>${topicsText}</p>`;
+      }
+    }
+  });
+} else {
+  html += `<p>Syllabus to be generated based on course outcomes.</p>`;
+}
+
+html += `
+
+<!-- TEXTBOOKS & REFERENCES -->
+<div class="page-break"></div>
+<h1>TEXTBOOKS & REFERENCES</h1>`;
+
+if (S_textbookAuthors && S_textbookAuthors.length > 0) {
+  html += `<h2>Prescribed Textbooks</h2><ol>`;
+  S_textbookAuthors.slice(0, 5).forEach(author => {
+    html += `<li>${author}</li>`;
+  });
+  html += `</ol>`;
+}
+
+html += `
+<h2>Reference Books</h2>
+<ol>
+  <li>Reference material as per course requirements</li>
+</ol>
+
+<h2>Online Resources</h2>
+<ul>
+  <li>NPTEL / SWAYAM courses related to course topics</li>
+  <li>IEEE and other academic journals</li>
+</ul>
+
+</body>
+</html>`;
+
+  // Create and download
+  const blob = new Blob([html], { type: 'application/msword' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${courseCode}_${courseTitle.replace(/\s+/g, '_')}_Syllabus.doc`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+  
+  console.log('✅ Document downloaded:', link.download);
+}
 function show(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));el(id).classList.add('active');}
 function el(id){return document.getElementById(id);}
 
@@ -353,126 +801,385 @@ function el(id){return document.getElementById(id);}
 // MODE SELECT
 // ════════════════════════════════════════
 function selectMode(m){S.mode=m;document.querySelectorAll('.mode-card').forEach(c=>c.classList.remove('selected'));el('mc-'+m).classList.add('selected');el('mode-next-btn').style.display='inline-flex';el('app-mode-label').innerHTML=m==='A'?'<span class="mode-badge mode-a">Mode A — Course Updation</span>':'<span class="mode-badge mode-b">Mode B — New Course</span>';}
-function startWizard(){if(!S.mode)return;el('view-select').style.display='none';el('wizard-shell').style.display='block';initWizard();showStep(1);}
+function startWizard(){if(!S.mode)return;el('view-select').style.display='none';el('wizard-shell').style.display='block';initWizard();S.mode==='A'?showStep(3):showStep(1);}
 
 // ════════════════════════════════════════
 // WIZARD
 // ════════════════════════════════════════
-function initWizard(){renderProg();el('co-step-title').textContent=S.mode==='A'?'Revised Course Outcomes':'New Course Outcomes';el('co-step-sub').textContent=S.mode==='A'?'Enter revised CO statements. CAMP will use these to generate the updated syllabus.':'Write each CO as an action-oriented statement. CAMP will auto-detect the Bloom\'s level and generate the full syllabus.';el('co-next-btn').textContent=S.mode==='A'?'Next: Existing Syllabus →':'Next: Textbooks →';el('books-banner').style.display=S.mode==='B'?'flex':'none';el('co-list').innerHTML='';S.coCount=0;for(let i=0;i<3;i++)addCO();el('existing-unit-list').innerHTML='';['Python Fundamentals','Strings & Exception Handling','OOP & Files','NumPy & Data Processing'].forEach((t,i)=>{el('existing-unit-list').innerHTML+=`<div class="unit-row"><div class="unit-hd">Unit ${i+1} — ${t}</div><textarea id="eu-${i+1}" placeholder="Paste topics for Unit ${i+1}..."></textarea></div>`;});el('textbook-list').innerHTML='';el('ref-list').innerHTML='';S.tbCount=0;S.rbCount=0;addBook('textbook-list','tb');addBook('ref-list','rb');}
-function renderProg(){const steps=S.mode==='A'?[{n:1,l:'Course Info',d:'Basic details'},{n:2,l:'Revised COs',d:'CO statements'},{n:3,l:'Existing Syllabus',d:'Paste current'},{n:4,l:'Textbooks',d:'References'}]:[{n:1,l:'Course Info',d:'Basic details'},{n:2,l:'New COs',d:'CO statements'},{n:3,l:'Textbooks',d:'References'}];el('step-progress').innerHTML=steps.map((s,i)=>`<div class="step-item"><div class="step-circle" id="sc-${s.n}">${s.n}</div><div class="step-info"><div class="slbl">${s.l}</div><div class="sdesc">${s.d}</div></div></div>${i<steps.length-1?`<div class="step-line" id="sl-${s.n}"></div>`:''}`).join('');}
-function updateProg(a){const t=S.mode==='A'?4:3;for(let i=1;i<=t;i++){const sc=el('sc-'+i),sl=el('sl-'+i);if(!sc)continue;if(i<a){sc.className='step-circle done';sc.textContent='✓';}else if(i===a){sc.className='step-circle active';sc.textContent=i;}else{sc.className='step-circle';sc.textContent=i;}if(sl)sl.className='step-line'+(i<a?' done':'');}};
+function initWizard(){renderProg();if(S.mode==='A'){const tbList=el('textbook-list');const refList=el('ref-list');if(tbList)tbList.innerHTML='';if(refList)refList.innerHTML='';S.tbCount=0;S.rbCount=0;if(tbList)addBook('textbook-list','tb');if(refList)addBook('ref-list','rb');}else{el('co-step-title').textContent='New Course Outcomes';el('co-step-sub').textContent='Write each CO as an action-oriented statement. CAMP will auto-detect the Bloom\'s level and generate the full syllabus.';el('co-next-btn').textContent='Next: Textbooks →';el('books-banner').style.display='flex';el('co-list').innerHTML='';S.coCount=0;for(let i=0;i<3;i++)addCO();}S_textbookAuthors=[];const tbFile=el('textbooks-file');if(tbFile)tbFile.value='';const tbResult=el('textbooks-result');if(tbResult)tbResult.style.display='none';}
+function renderProg(){const steps=S.mode==='A'?[{n:1,l:'Upload Syllabus',d:'PDF analysis'},{n:2,l:'Textbooks',d:'References'}]:[{n:1,l:'Course Info',d:'Basic details'},{n:2,l:'New COs',d:'CO statements'},{n:3,l:'Textbooks',d:'References'}];el('step-progress').innerHTML=steps.map((s,i)=>`<div class="step-item"><div class="step-circle" id="sc-${s.n}">${s.n}</div><div class="step-info"><div class="slbl">${s.l}</div><div class="sdesc">${s.d}</div></div></div>${i<steps.length-1?`<div class="step-line" id="sl-${s.n}"></div>`:''}`).join('');}
+function updateProg(a){const t=S.mode==='A'?2:3;let displayStep=a;if(S.mode==='A'){if(a===3)displayStep=1;else if(a===4||a==='step-books')displayStep=2;}for(let i=1;i<=t;i++){const sc=el('sc-'+i),sl=el('sl-'+i);if(!sc)continue;if(i<displayStep){sc.className='step-circle done';sc.textContent='✓';}else if(i===displayStep){sc.className='step-circle active';sc.textContent=i;}else{sc.className='step-circle';sc.textContent=i;}if(sl)sl.className='step-line'+(i<displayStep?' done':'');}if(S.mode==='A'&&el('step3-back-btn')){el('step3-back-btn').style.display=a===3?'none':'inline-flex';}};
 function showStep(n){S.step=n;document.querySelectorAll('.form-panel').forEach(p=>p.classList.remove('active'));el('step-'+n).classList.add('active');updateProg(n);scroll(0,0);}
-function showStepById(id){document.querySelectorAll('.form-panel').forEach(p=>p.classList.remove('active'));el(id).classList.add('active');const n=id==='step-books'?(S.mode==='A'?4:3):parseInt(id.replace('step-',''));updateProg(n);scroll(0,0);}
-function nextStep(f){if(f===2){S.mode==='A'?showStep(3):showStepById('step-books');}else if(f===3&&S.mode==='A')showStepById('step-books');else showStep(f+1);}
-function prevStep(f){f===3&&S.mode==='B'?showStep(2):showStep(f-1);}
+function showStepById(id){document.querySelectorAll('.form-panel').forEach(p=>p.classList.remove('active'));el(id).classList.add('active');let n;if(id==='step-books'){n=S.mode==='A'?4:3;}else{n=parseInt(id.replace('step-',''));}updateProg(n);scroll(0,0);}
+function nextStep(f){if(S.mode==='A'){if(f===3)showStepById('step-books');else showStep(f+1);}else{if(f===2){showStepById('step-books');}else showStep(f+1);}}
+function prevStep(f){if(S.mode==='A'){if(f===3)return;showStep(f-1);}else{if(f===1)return;showStep(f-1);}}
 function addCO(){S.coCount++;const n=S.coCount,row=document.createElement('div');row.className='co-row';row.id='co-row-'+n;row.innerHTML=`<div class="co-badge">CO${n}</div><input type="text" id="co-${n}" placeholder="e.g. Write programs to compute mathematical functions using loops..."/><button class="co-remove" onclick="removeCO(${n})">×</button>`;el('co-list').appendChild(row);}
 function removeCO(n){const r=el('co-row-'+n);if(r)r.remove();}
 function addBook(lid,p){const list=el(lid),n=p==='tb'?++S.tbCount:++S.rbCount,row=document.createElement('div');row.className='book-row';row.id=p+'-row-'+n;row.innerHTML=`<input type="text" id="${p}-a-${n}" placeholder="Author(s)"/><input type="text" id="${p}-t-${n}" placeholder="Title"/><input type="number" id="${p}-y-${n}" placeholder="Year" oninput="ckY('${p}-y-${n}')"/><button class="co-remove" onclick="el('${p}-row-${n}').remove()">×</button>`;list.appendChild(row);}
 function ckY(id){const e=el(id),y=parseInt(e.value),a=2026-y;e.classList.toggle('book-warn',y>0&&a>8);}
 
 // ════════════════════════════════════════
+// BACKEND API HANDLERS
+// ════════════════════════════════════════
+
+async function addCourseOutcomes(courseId, cos) {
+  try {
+    if (!courseId || !cos || cos.length === 0) {
+      throw new Error('Invalid courseId or COs list');
+    }
+    
+    console.log('Adding COs with mapping:', { courseId, cos });
+    
+    // Validate COs are not empty/whitespace only
+    const validCos = cos.filter(co => co && co.trim());
+    if (validCos.length === 0) {
+      throw new Error('All COs are empty');
+    }
+    
+    // Step 1: POST to /add-cos to generate mapping (backend stores this)
+    const response = await fetch(`${API_BASE}/add-cos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courseId, cos: validCos })
+    });
+    
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`HTTP ${response.status}:`, errText);
+      throw new Error(`Backend error: ${errText || response.statusText}`);
+    }
+    
+    const addResult = await response.json();
+    console.log('✅ COs added to backend:', addResult);
+    
+    // Step 2: GET /course to fetch the stored course with keywords
+    const courseResponse = await fetch(`${API_BASE}/course?courseCode=${encodeURIComponent(courseId)}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (!courseResponse.ok) {
+      console.warn('Failed to fetch course data:', courseResponse.status);
+      S.coData = validCos.map(co => ({ CO: co, keywords: [] }));
+      return addResult;
+    }
+    
+    const courseData = await courseResponse.json();
+    console.log('✅ Course fetched with keywords:', courseData);
+    
+    // ✅ CRITICAL: Filter to only COs that match what we just submitted
+    // Backend may return cached/stale COs from previous submissions
+    if (courseData && courseData.courseOutcomesList && Array.isArray(courseData.courseOutcomesList)) {
+      console.log(`⚠️ Backend returned ${courseData.courseOutcomesList.length} COs, filtering to match ${validCos.length} submitted`);
+      
+      // Map to only the COs we submitted, in order
+      const filteredCOs = validCos.map(submittedCO => {
+        const found = courseData.courseOutcomesList.find(returnedCO => {
+          const returnedText = (returnedCO.CO || returnedCO.co || '').trim();
+          return returnedText === submittedCO.trim();
+        });
+        return found || { CO: submittedCO, keywords: [] };
+      });
+      
+      console.log(`✅ Filtered to ${filteredCOs.length} COs matching submission`);
+      
+      S.coData = filteredCOs.map(co => {
+        const coText = co.CO || co.co || '';
+        const keywords = (co.keywords && Array.isArray(co.keywords)) ? co.keywords : [];
+        
+        const transformedKeywords = keywords.map(k => ({
+          keyword: k.keyword || k.keywords || '',
+          reasons: (k.reasons && Array.isArray(k.reasons)) ? k.reasons.map(r => ({
+            po: r.po || r.Po || '',
+            reason: r.reason || ''
+          })) : []
+        })).filter(k => k.keyword);
+        
+        return { CO: coText, keywords: transformedKeywords };
+      });
+      console.log('✅ Stored CO data with keywords:', S.coData);
+    } else {
+      console.warn('No courseOutcomesList in response, using COs without mapping');
+      S.coData = validCos.map(co => ({ CO: co, keywords: [] }));
+    }
+    
+    return courseData;
+  } catch (e) {
+    console.error('addCourseOutcomes error:', e);
+    alert('Error adding COs: ' + e.message);
+    return null;
+  }
+}
+
+// ════════════════════════════════════════
 // GENERATE PREVIEW
 // ════════════════════════════════════════
 async function generatePreview(){
-  const cos=[];for(let i=1;i<=S.coCount;i++){const e=el('co-'+i);if(e&&e.value.trim())cos.push(e.value.trim());}
-  if(!cos.length){alert('Please add at least one Course Outcome.');return;}
-  S.cos=cos;
-  S.courseTitle=el('f-title').value||'Untitled Course';
-  S.courseCode=el('f-code').value||'—';
-  S.courseSem=el('f-sem').value||'—';
-  S.courseBranch=el('f-branch').value||'—';
-  const credits=el('f-credits').value||'3';
+  console.log('🎯 generatePreview() - Mode:', S.mode);
   
-  // Helper function to deduplicate CO data
-  function deduplicateCoData(rawData) {
-    if (!Array.isArray(rawData)) return cos.map(co => ({ CO: co, keywords: [] }));
+  let cos = [];
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // MODE A: Extract COs from PDF analysis data
+  // ═══════════════════════════════════════════════════════════════════════
+  if (S.mode === 'A') {
+    // ✅ VERIFY PDF analysis data exists
+    if (!S.analysisData || !S.analysisData.addPOs || S.analysisData.addPOs.length === 0) {
+      alert('❌ No PDF analysis data found. Please upload and analyze a PDF first.');
+      return;
+    }
     
-    // Create a map to track unique COs by their text content
-    const uniqueCOs = new Map();
-    rawData.forEach(item => {
-      if (item && item.CO) {
-        const coText = item.CO.trim().toLowerCase();
-        // Only keep first occurrence of each unique CO
-        if (!uniqueCOs.has(coText)) {
-          uniqueCOs.set(coText, item);
-        }
-      }
+    const title = el('f-title')?.value?.trim();
+    const code = el('f-code')?.value?.trim();
+    
+    if (!title || !code) {
+      alert('❌ Please fill in Course Title and Course Code');
+      return;
+    }
+    
+    // ✅ Extract COs from addPOs
+    S.analysisData.addPOs.forEach((po, idx) => {
+      const coText = typeof po === 'string' ? po : (po.co || po.CO || `CO${idx+1}`);
+      cos.push(coText);
     });
     
-    // Convert map back to array and ensure we have keywords array
-    const dedupedData = Array.from(uniqueCOs.values()).map(item => ({
-      CO: item.CO,
-      keywords: Array.isArray(item.keywords) ? item.keywords : [],
-      id: item.id
+    console.log(`✅ Mode A: Extracted ${cos.length} COs from PDF analysis`);
+    
+    // Store metadata
+    S.courseTitle = title;
+    S.courseCode = code;
+    S.courseSem = el('f-sem')?.value || '—';
+    S.courseBranch = el('f-branch')?.value || '—';
+    
+    // ✅ Set CO data from addPOs with keywords (backend provides this)
+    S.coData = S.analysisData.addPOs.map((po, idx) => ({
+      CO: typeof po === 'string' ? po : (po.co || po.CO || `CO${idx+1}`),
+      keywords: po.keywords || []
     }));
     
-    console.log(`Deduplication: received ${rawData.length} items, reduced to ${dedupedData.length} unique COs`);
-    return dedupedData.length > 0 ? dedupedData : cos.map(co => ({ CO: co, keywords: [] }));
-  }
-  
-  // Call backend API to create course and add outcomes with keyword mapping
-  try {
-    const courseData = await createCourse(S.courseCode, S.courseTitle, el('f-overview').value || '');
-    if (courseData) {
-      const coData = await addCourseOutcomes(S.courseCode, cos);
-      console.log('Course created and outcomes added:', { courseData, coData });
-      
-      // Fetch keyword-mapped CO data from backend for accurate PO-mapping
+    // ✅ Set syllabus from revisedStructure
+    S.existingUnits = S.analysisData.revisedStructure || [];
+    
+    console.log('✅ Mode A State Set:', {
+      cos: cos.length,
+      coData: S.coData.length,
+      units: S.existingUnits.length
+    });
+    
+  } 
+  // ═══════════════════════════════════════════════════════════════════════
+  // MODE B: Extract COs from form inputs and fetch mapping from backend
+  // ═══════════════════════════════════════════════════════════════════════
+  else {
+    for (let i = 1; i <= S.coCount; i++) {
+      const e = el('co-' + i);
+      if (e && e.value.trim()) cos.push(e.value.trim());
+    }
+    
+    if (!cos.length) {
+      alert('Please add at least one Course Outcome.');
+      return;
+    }
+    
+    console.log(`✅ Mode B: Extracted ${cos.length} COs from form inputs`);
+    
+    S.courseTitle = el('f-title').value || 'Untitled Course';
+    S.courseCode = el('f-code').value || '—';
+    S.courseSem = el('f-sem').value || '—';
+    S.courseBranch = el('f-branch').value || '—';
+    
+    // ✅ MODE B: First create course, then fetch mapping from backend
+    if (S.courseCode && S.courseCode !== '—') {
       try {
-        const courseDetails = await getCourse(S.courseCode);
-        if (courseDetails && courseDetails.courseOutcomesList) {
-          // Deduplicate the received data
-          S.coData = deduplicateCoData(courseDetails.courseOutcomesList);
-          console.log('CO keyword mapping loaded (deduplicated):', S.coData);
+        // Step 1: Create course in backend first
+        const courseTitle = el('f-title').value || 'Untitled Course';
+        const courseDesc = el('f-code').value ? `Course code: ${el('f-code').value}` : 'Manual CO entry';
+        
+        console.log('📝 Creating course:', { code: S.courseCode, title: courseTitle });
+        const courseRes = await fetch(`${API_BASE}/course`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: S.courseCode,
+            name: courseTitle,
+            desc: courseDesc
+          })
+        });
+        
+        if (!courseRes.ok) {
+          const errText = await courseRes.text();
+          console.warn('Course creation returned:', errText);
+          // Continue anyway - course might already exist
         } else {
-          S.coData = cos.map(co => ({ CO: co, keywords: [] }));
-          console.log('No CO data from backend, using fallback');
+          const courseData = await courseRes.json();
+          console.log('✅ Course created/retrieved:', courseData);
         }
-      } catch (e) {
-        console.warn('Could not fetch keyword data:', e.message);
-        S.coData = cos.map(co => ({ CO: co, keywords: [] }));
+        
+        // Step 2: Now fetch CO mapping from backend
+        const mappingData = await addCourseOutcomes(S.courseCode, cos);
+        console.log('✅ Mode B: Received mapping data:', mappingData);
+        // S.coData is set inside addCourseOutcomes()
+      } catch (err) {
+        console.error('Error in Mode B course setup:', err);
+        alert('Error: ' + err.message);
       }
     }
-  } catch (e) {
-    console.error('Error creating course:', e.message);
-    S.coData = cos.map(co => ({ CO: co, keywords: [] }));
   }
   
-  el('preview-course-title').textContent=S.courseTitle;
-  el('preview-course-sub').textContent=`${S.courseCode}  ·  ${S.courseBranch}  ·  ${S.courseSem}`;
-  el('preview-co-list').innerHTML=cos.map((co,i)=>`<div class="co-prev-row"><div class="co-num">CO${i+1}</div><div style="font-size:12px;line-height:1.5">${co}</div></div>`).join('');
-  el('blooms-tbody').innerHTML=cos.map((co,i)=>{const l=dB(co),s=co.length>55?co.substring(0,55)+'…':co;return`<tr><td>CO${i+1}</td><td style="font-size:11px;color:var(--muted)">${s}</td><td><span class="lvl ${BC[l]}">${BL[l]}</span></td></tr>`;}).join('');
-  const rows=genCOPO(cos, S.coData);
-  const cc=v=>v===3?'c3':v===2?'c2':v===1?'c1':'c0',ct=v=>v>0?v:'—';
-  el('matrix-table').innerHTML=`<thead><tr><th style="text-align:left;padding-left:10px">CO</th>${POS.map(p=>`<th>${p}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr><td class="co-name">${r.co}</td>${POS.map(p=>`<td class="${cc(r.pos[p])}" style="cursor:pointer;user-select:none" title="Click to see keyword breakdown">${ct(r.pos[p])}</td>`).join('')}</tr>`).join('')}</tbody>`;
-  makeMatrixInteractive();
-  if(S.mode==='B'){
-    el('mod-report-section').style.display='none';
-    el('syl-prev-title').textContent='Generated Syllabus';
-    el('syl-prev-badge').className='pbadge pb-auto';
-    el('syl-prev-badge').textContent='Auto Generated';
-    S.generatedSyllabus=genSyllabus(S.courseTitle,cos,credits);
-    el('syllabus-preview').innerHTML=S.generatedSyllabus.map(u=>`<div class="syl-unit"><div class="syl-unit-hd">Unit ${u.num} — ${u.title}</div><div class="syl-unit-bd">${u.topics}</div></div>`).join('');
-  } else {
-    el('syl-prev-title').textContent='Updated Syllabus (with Changes)';
-    el('syl-prev-badge').className='pbadge pb-diff';
-    el('syl-prev-badge').textContent='Updated — Diff View';
-    const existing=[];for(let i=1;i<=4;i++){const e=el('eu-'+i);existing.push({title:`Unit ${i}`,topics:e&&e.value.trim()?e.value.trim():`Topic A, Topic B, Topic C, Sample Topic ${i}`});}
-    S.existingUnits=existing;
-    const{units,stats}=genUpdated(existing,cos);
-    S.modStats=stats;
-    el('mod-report-section').style.display='block';
-    el('mod-report-cards').innerHTML=`
-      <div class="mod-card" style="background:#DCFCE7"><div class="mod-num" style="color:#166534">${stats.added}</div><div style="font-size:10px;color:#166534;margin-top:2px;font-weight:500">Topics Added</div></div>
-      <div class="mod-card" style="background:#DBEAFE"><div class="mod-num" style="color:#1E40AF">${stats.modified}</div><div style="font-size:10px;color:#1E40AF;margin-top:2px;font-weight:500">Topics Modified</div></div>
-      <div class="mod-card" style="background:#FEE2E2"><div class="mod-num" style="color:#991B1B">${stats.removed}</div><div style="font-size:10px;color:#991B1B;margin-top:2px;font-weight:500">Topics Removed</div></div>
-      <div class="mod-card" style="background:#FAEEDA"><div class="mod-num" style="color:#633806">${stats.modPct}%</div><div style="font-size:10px;color:#633806;margin-top:2px;font-weight:500">Total Modification</div></div>`;
-    el('syllabus-preview').innerHTML=units.map(u=>`<div class="syl-unit"><div class="syl-unit-hd">Unit ${u.num} — ${u.title}</div><div class="syl-unit-bd">${u.diffTopics.map(t=>t.type==='added'?`<span class="diff-added">+ ${t.text}</span>`:t.type==='removed'?`<span class="diff-removed">${t.text}</span>`:t.type==='modified'?`<span class="diff-removed">${t.text}</span> <span class="diff-added">→ ${t.newText}</span>`:`<span style="color:var(--muted)">${t.text}</span>`).join(',  ')}</div></div>`).join('');
-    S.generatedSyllabus=genSyllabus(S.courseTitle,cos,3);
+  S.cos = cos;
+  const credits = el('f-credits')?.value || '3';
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // POPULATE CO DATA (if not already fetched from backend)
+  // ═══════════════════════════════════════════════════════════════════════
+  if (!S.coData || S.coData.length === 0) {
+    S.coData = cos.map(co => ({ CO: co, keywords: [] }));
+    console.log('⚠️ No keywords from backend, using empty keywords');
   }
-  el('wizard-shell').style.display='none';
-  el('view-preview').style.display='block';
-  scroll(0,0);
+  
+  console.log('📊 Preview State:', {
+    mode: S.mode,
+    courseTitle: S.courseTitle,
+    courseCode: S.courseCode,
+    coCount: S.cos.length,
+    coDataCount: S.coData.length
+  });
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // RENDER PREVIEW
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  // Update header
+  el('preview-course-title').textContent = S.courseTitle;
+  el('preview-course-sub').textContent = `${S.courseCode}  ·  ${S.courseBranch}  ·  ${S.courseSem}`;
+  
+  // Update CO list
+  el('preview-co-list').innerHTML = cos.map((co, i) => `
+    <div class="co-prev-row">
+      <div class="co-num">CO${i+1}</div>
+      <div style="font-size:12px;line-height:1.5">${co}</div>
+    </div>
+  `).join('');
+  
+  // Update Bloom's levels - show table with all 6 levels and checkmarks
+  el('blooms-tbody').innerHTML = cos.map((co, i) => {
+    const detectedLevel = dB(co);
+    const levelCells = [1, 2, 3, 4, 5, 6].map(lv => 
+      `<td style="text-align:center;border:1px solid #E5E7EB;padding:10px">` +
+      (lv === detectedLevel ? '✓' : '') +
+      `</td>`
+    ).join('');
+    return `<tr style="border-bottom:1px solid #E5E7EB">
+      <td style="padding:10px;font-weight:600;color:var(--navy);border:1px solid #E5E7EB">CO${i+1}</td>
+      ${levelCells}
+    </tr>`;
+  }).join('');
+  
+  // Generate and display CO-PO matrix
+  const rows = genCOPO(cos, S.coData);
+  const cc = v => v === 3 ? 'c3' : v === 2 ? 'c2' : v === 1 ? 'c1' : 'c0';
+  const ct = v => v > 0 ? v : '—';
+  
+  el('matrix-table').innerHTML = `
+    <thead>
+      <tr>
+        <th style="text-align:left;padding-left:10px">CO</th>
+        ${POS.map(p => `<th>${p}</th>`).join('')}
+      </tr>
+    </thead>
+    <tbody>
+      ${rows.map(r => `
+        <tr>
+          <td class="co-name">${r.co}</td>
+          ${POS.map(p => `<td class="${cc(r.pos[p])}" style="cursor:pointer;user-select:none" title="Click to see keyword breakdown">${ct(r.pos[p])}</td>`).join('')}
+        </tr>
+      `).join('')}
+    </tbody>
+  `;
+  
+  makeMatrixInteractive();
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // MODE-SPECIFIC SYLLABUS DISPLAY
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  if (S.mode === 'B') {
+    // Mode B: Generate syllabus from COs
+    el('mod-report-section').style.display = 'none';
+    el('syl-prev-title').textContent = 'Generated Syllabus';
+    el('syl-prev-badge').className = 'pbadge pb-auto';
+    el('syl-prev-badge').textContent = 'Auto Generated';
+    
+    S.generatedSyllabus = genSyllabus(S.courseTitle, cos, credits);
+    el('syllabus-preview').innerHTML = S.generatedSyllabus.map(u => `
+      <div class="syl-unit">
+        <div class="syl-unit-hd">Unit ${u.num} — ${u.title}</div>
+        <div class="syl-unit-bd">${u.topics}</div>
+      </div>
+    `).join('');
+    
+    console.log('✅ Mode B: Generated syllabus with', S.generatedSyllabus.length, 'units');
+    
+  } else {
+    // Mode A: Use syllabus from PDF analysis
+    el('syl-prev-title').textContent = 'Updated Syllabus (from PDF Analysis)';
+    el('syl-prev-badge').className = 'pbadge pb-diff';
+    el('syl-prev-badge').textContent = 'Analyzed from PDF';
+    
+    if (S.existingUnits && S.existingUnits.length > 0) {
+      el('syllabus-preview').innerHTML = S.existingUnits.map((unit, i) => {
+        const topicsArray = Array.isArray(unit.topics) ? unit.topics : (unit.topics ? [unit.topics] : []);
+        const topicsText = topicsArray.join(', ');
+        return `
+          <div class="syl-unit">
+            <div class="syl-unit-hd">Unit ${i+1}: ${unit.moduleName || `Module ${i+1}`}</div>
+            <div class="syl-unit-bd">${topicsText}</div>
+          </div>
+        `;
+      }).join('');
+      
+      console.log('✅ Mode A: Displaying', S.existingUnits.length, 'units from PDF analysis');
+    } else {
+      el('syllabus-preview').innerHTML = '<div style="color:#999;padding:20px;text-align:center">No syllabus structure found in PDF analysis</div>';
+    }
+    
+    // Show modification statistics
+    el('mod-report-section').style.display = 'block';
+    const stats = {
+      analyzed: cos.length,
+      topics_retained: (S.analysisData.importantTopics || []).length,
+      topics_removed: (S.analysisData.burdenTopics || []).length,
+      improvements: (S.analysisData.improvements || []).length
+    };
+    
+    el('mod-report-cards').innerHTML = `
+      <div class="mod-card" style="background:#DCFCE7">
+        <div class="mod-num" style="color:#166534">${stats.analyzed}</div>
+        <div style="font-size:10px;color:#166534;margin-top:2px;font-weight:500">Course Outcomes Extracted</div>
+      </div>
+      <div class="mod-card" style="background:#DBEAFE">
+        <div class="mod-num" style="color:#1E40AF">${stats.topics_retained}</div>
+        <div style="font-size:10px;color:#1E40AF;margin-top:2px;font-weight:500">Topics Retained</div>
+      </div>
+      <div class="mod-card" style="background:#FEE2E2">
+        <div class="mod-num" style="color:#991B1B">${stats.topics_removed}</div>
+        <div style="font-size:10px;color:#991B1B;margin-top:2px;font-weight:500">Burden Topics Identified</div>
+      </div>
+      <div class="mod-card" style="background:#FAEEDA">
+        <div class="mod-num" style="color:#633806">${stats.improvements}</div>
+        <div style="font-size:10px;color:#633806;margin-top:2px;font-weight:500">Improvements Suggested</div>
+      </div>
+    `;
+    
+    console.log('✅ Mode A: Modification stats:', stats);
+  }
+  
+  // Show preview
+  el('wizard-shell').style.display = 'none';
+  el('view-preview').style.display = 'block';
+  scroll(0, 0);
+  
+  console.log('✅ Preview rendered successfully');
 }
 
 // ════════════════════════════════════════
@@ -501,6 +1208,240 @@ function updateBenchmarkColumns(){
 }
 function resetBenchmarkColumns(){el('col-bench-body').innerHTML=`<div style="text-align:center;padding:24px;color:#2A4A8C;font-size:12px">Upload a benchmark document to compare</div>`;renderCODiffTable(false);renderBloomsChart(false);renderTopicGrid(false);}
 function colRow(label,val,cls=''){return`<div class="col-item-row"><div class="col-item-label">${label}</div><div class="col-item-val ${cls}">${val}</div></div>`;}
+
+// ════════════════════════════════════════
+// MODE A PDF UPLOAD HANDLERS
+// ════════════════════════════════════════
+S.pdfAnalysis = null;
+
+function handlePdfUploadModeA(input) {
+  if (input.files && input.files[0]) {
+    processPdfModeA(input.files[0]);
+  }
+}
+
+function handlePdfDropModeA(e) {
+  e.preventDefault();
+  el('upload-zone-modeA').classList.remove('drag-over');
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    processPdfModeA(e.dataTransfer.files[0]);
+  }
+}
+
+async function processPdfModeA(file) {
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    alert('Please upload a PDF file.');
+    return;
+  }
+  
+  if (file.size > 20 * 1024 * 1024) {
+    alert('File size exceeds 20MB limit.');
+    return;
+  }
+
+  // Show upload progress
+  el('upload-zone-modeA').style.display = 'none';
+  el('pdf-upload-result').style.display = 'block';
+  el('pdf-filename').textContent = file.name;
+  el('pdf-status').textContent = 'Analyzing PDF... Please wait';
+  el('analysis-results').style.display = 'none';
+  el('step3-next-btn').disabled = true;
+  el('step3-next-btn').style.opacity = '0.5';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/course-modify/upload`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    
+    // Store response as-is
+    S.pdfAnalysis = data;
+    
+    el('pdf-status').textContent = '✓ Analysis complete';
+    displayPdfAnalysis(data);
+
+    el('step3-next-btn').disabled = false;
+    el('step3-next-btn').style.opacity = '1';
+    el('step3-next-btn').style.cursor = 'pointer';
+
+  } catch (e) {
+    console.error('PDF upload error:', e);
+    el('pdf-status').textContent = `Error: ${e.message}`;
+    el('pdf-status').style.color = '#DC2626';
+    alert('Error analyzing PDF: ' + e.message);
+    clearPdfUploadModeA();
+  }
+}
+
+function displayPdfAnalysis(data) {
+  if (!data) return;
+  
+  el('analysis-results').style.display = 'block';
+
+  // ════════════════════════════════════════
+  // 1. COURSE OUTCOMES (addPOs)
+  // ════════════════════════════════════════
+  if (data.addPOs && data.addPOs.length > 0) {
+    el('section-extracted-cos').style.display = 'block';
+    
+    const cosHtml = data.addPOs.map((item, idx) => {
+      const coTitle = item.co || `Course Outcome ${idx + 1}`;
+      
+      let keywordsHtml = '';
+      if (item.keywords && Array.isArray(item.keywords)) {
+        keywordsHtml = item.keywords.map((kw, i) => {
+          let reasonsHtml = '';
+          if (kw.reasons && Array.isArray(kw.reasons)) {
+            reasonsHtml = kw.reasons.map((r, j) => 
+              `<div style="padding:6px 8px;background:#E8F5E9;margin:4px 0;border-left:3px solid #4CAF50;font-size:11px">
+                <strong>${r.Po || 'PO?'}:</strong> ${r.reason || 'N/A'}
+              </div>`
+            ).join('');
+          }
+          
+          return `<div style="margin-bottom:8px;padding:10px;background:#F5F5F5;border-radius:4px">
+            <div style="font-weight:600;color:#2E5C8A;margin-bottom:4px">${kw.keywords || 'Keyword'}</div>
+            ${reasonsHtml}
+          </div>`;
+        }).join('');
+      }
+      
+      return `<div style="padding:14px;background:#F0F4F8;border-left:4px solid #2E5C8A;border-radius:6px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="background:#2E5C8A;color:white;padding:4px 8px;border-radius:3px;font-weight:bold;font-size:12px">CO${idx + 1}</span>
+          <div style="font-size:13px;color:#1B3A6B;font-weight:600">${coTitle}</div>
+        </div>
+        ${keywordsHtml ? `<div style="margin-top:10px;border-top:1px solid #DDD;padding-top:10px">
+          <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:6px">PO Mapping:</div>
+          ${keywordsHtml}
+        </div>` : ''}
+      </div>`;
+    }).join('');
+    
+    el('extracted-cos-list').innerHTML = cosHtml;
+  } else {
+    el('section-extracted-cos').style.display = 'none';
+  }
+
+  // ════════════════════════════════════════
+  // 2. BURDEN TOPICS (Red - Remove)
+  // ════════════════════════════════════════
+  if (data.burdenTopics && data.burdenTopics.length > 0) {
+    el('section-outdated').style.display = 'block';
+    
+    const burdenHtml = data.burdenTopics.map(t => {
+      const topicName = typeof t === 'string' ? t : (t.name || t.topic || 'Topic');
+      return `<div style="padding:8px 12px;background:#FFEBEE;border:1px solid #FFCDD2;border-radius:4px;margin-bottom:6px;font-size:12px;color:#C62828">
+        🗑️ ${topicName}
+      </div>`;
+    }).join('');
+    
+    el('outdated-topics-list').innerHTML = burdenHtml;
+  } else {
+    el('section-outdated').style.display = 'none';
+  }
+
+  // ════════════════════════════════════════
+  // 3. UNNECESSARY TOPICS (Yellow - Optional)
+  // ════════════════════════════════════════
+  if (data.unnecessaryTopics && data.unnecessaryTopics.length > 0) {
+    // Append to burden section
+    const unnecessaryHtml = data.unnecessaryTopics.map(t => {
+      const topicName = typeof t === 'string' ? t : (t.name || t.topic || 'Topic');
+      return `<div style="padding:8px 12px;background:#FFF9C4;border:1px solid #FDD835;border-radius:4px;margin-bottom:6px;font-size:12px;color:#F57F17">
+        ⚠️ ${topicName}
+      </div>`;
+    }).join('');
+    
+    if (el('section-outdated').style.display !== 'none') {
+      const header = '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #DDD;font-weight:600;color:#666;margin-bottom:8px;font-size:11px">OPTIONAL TO REMOVE:</div>';
+      el('outdated-topics-list').innerHTML += header + unnecessaryHtml;
+    }
+  }
+
+  // ════════════════════════════════════════
+  // 4. IMPORTANT TOPICS (Green - Retain)
+  // ════════════════════════════════════════
+  if (data.importantTopics && data.importantTopics.length > 0) {
+    el('section-important').style.display = 'block';
+    
+    const importantHtml = data.importantTopics.map(t => {
+      const topicName = typeof t === 'string' ? t : (t.name || t.topic || 'Topic');
+      return `<div style="padding:8px 12px;background:#E8F5E9;border:1px solid #C8E6C9;border-radius:4px;margin-bottom:6px;font-size:12px;color:#2E7D32">
+        ✓ ${topicName}
+      </div>`;
+    }).join('');
+    
+    el('important-topics-list').innerHTML = importantHtml;
+  } else {
+    el('section-important').style.display = 'none';
+  }
+
+  // ════════════════════════════════════════
+  // 5. IMPROVEMENTS (Blue - Suggestions)
+  // ════════════════════════════════════════
+  if (data.improvements && data.improvements.length > 0) {
+    el('section-improvements').style.display = 'block';
+    
+    const improvementsHtml = data.improvements.map(imp => {
+      const improvementText = typeof imp === 'string' ? imp : (imp.suggestion || imp.improvement || '');
+      return `<div style="padding:12px;background:#E3F2FD;border-left:4px solid #1976D2;border-radius:4px;margin-bottom:8px;font-size:12px;color:#0D47A1;line-height:1.5">
+        • ${improvementText}
+      </div>`;
+    }).join('');
+    
+    el('improvements-list').innerHTML = improvementsHtml;
+  } else {
+    el('section-improvements').style.display = 'none';
+  }
+
+  // ════════════════════════════════════════
+  // 6. REVISED SYLLABUS STRUCTURE
+  // ════════════════════════════════════════
+  if (data.revisedStructure && data.revisedStructure.length > 0) {
+    el('section-syllabus').style.display = 'block';
+    
+    const syllabusHtml = data.revisedStructure.map((unit, i) => {
+      const moduleName = unit.moduleName || unit.title || `Module ${i + 1}`;
+      const topicsArray = Array.isArray(unit.topics) ? unit.topics : (unit.topics ? [unit.topics] : []);
+      
+      const topicsHtml = topicsArray.map((topic, j) => 
+        `<li style="padding:4px 0;color:#555;font-size:12px">${topic}</li>`
+      ).join('');
+      
+      return `<div style="padding:14px;background:#F9F9F9;border:1px solid #E0E0E0;border-radius:6px;margin-bottom:12px">
+        <div style="font-weight:700;color:#1B3A6B;margin-bottom:8px;font-size:13px">Unit ${i + 1}: ${moduleName}</div>
+        <ul style="margin:0;padding-left:20px;list-style:disc">
+          ${topicsHtml}
+        </ul>
+      </div>`;
+    }).join('');
+    
+    el('syllabus-structure').innerHTML = syllabusHtml;
+  } else {
+    el('section-syllabus').style.display = 'none';
+  }
+}
+
+
+function clearPdfUploadModeA() {
+  el('upload-zone-modeA').style.display = 'block';
+  el('pdf-upload-result').style.display = 'none';
+  el('analysis-results').style.display = 'none';
+  el('step3-next-btn').disabled = true;
+  el('step3-next-btn').style.opacity = '0.5';
+  el('pdf-input-modeA').value = '';
+}
 
 // ════════════════════════════════════════
 // BOS DASHBOARD BUILD
