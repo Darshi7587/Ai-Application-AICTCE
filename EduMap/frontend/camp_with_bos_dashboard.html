@@ -126,9 +126,40 @@
       <div class="fst">Course Information</div>
       <div class="fss">Enter the basic details of the course</div>
       <div class="form-row">
-        <div class="fg"><label>Course Title *</label><input type="text" id="f-title" placeholder="e.g. Introduction to Python Programming"/></div>
-        <div class="fg"><label>Course Code *</label><input type="text" id="f-code" placeholder="e.g. B22EFS415"/></div>
-      </div>
+        <div class="form-row">
+
+    <div class="fg">
+        <label>Course Title *</label>
+        <select id="f-title">
+            <option value="">-- Select Course --</option>
+            <option>Data Science Lab</option>
+            <option>Physics for Computer Science Lab</option>
+            <option>Basics of Electrical and Electronics Lab</option>
+            <option>Engineering Chemistry Lab</option>
+            <option>Programming with C Lab</option>
+            <option>Engineering Workshop</option>
+            <option>Java Programming Lab</option>
+            <option>Data Structures Lab (C)</option>
+            <option>Analog & Digital Electronics Lab</option>
+            <option>Algorithms Lab</option>
+            <option>DBMS Lab</option>
+            <option>Microcontroller and IoT Lab</option>
+            <option>Big Data Analytics Lab</option>
+            <option>Computer Networks Lab</option>
+            <option>Machine Learning Lab</option>
+            <option>Web Technology Lab</option>
+            <option>Cloud Computing Lab</option>
+            <option>Cryptography and Network Security Lab</option>
+        </select>
+    </div>
+
+    <div class="fg">
+        <label>Course Code *</label>
+        <input type="text" id="f-code" placeholder="e.g. B22EFS415"/>
+    </div>
+
+</div>
+        
       <div class="form-row">
         <div class="fg"><label>Branch / Programme *</label>
           <select id="f-branch"><option value="">Select branch</option><option>Computer Science & Engineering (CSE)</option><option>Information Science & Engineering (ISE)</option><option>Electronics & Communication (ECE)</option><option>All Branches</option></select>
@@ -334,125 +365,8 @@
   </div>
 
   <!-- Premium CTA on preview -->
-  <div style="background:linear-gradient(135deg,#1B3A6B,#0D1B35);border-radius:16px;padding:28px;margin-top:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
-    <div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <span class="premium-badge">★ PREMIUM FEATURE</span>
-      </div>
-      <div style="font-size:18px;font-weight:700;color:#fff;margin-bottom:6px">BOS Review Dashboard</div>
-      <div style="font-size:13px;color:#6B8EC7;max-width:500px">Get a detailed 3-way comparison — previous course vs updated course vs any benchmark university syllabus. Upload a PDF from VTU, IIT, or NITK for instant analysis.</div>
-    </div>
-    <button class="btn btn-premium btn-lg" onclick="goToBOS()">★ Open BOS Dashboard →</button>
-  </div>
-</div>
-</div>
+  
 
-<!-- ══════════ BOS DASHBOARD ══════════ -->
-<div id="view-bos" class="view">
-<nav class="bos-nav">
-  <div class="bos-logo" onclick="goToPreview()">
-    <div class="app-logo-icon">
-      <div class="ldg">
-        <div class="ld" style="background:#3A86FF"></div><div class="ld" style="background:#3A86FF"></div><div class="ld" style="background:rgba(255,255,255,.3)"></div>
-        <div class="ld" style="background:#3A86FF"></div><div class="ld" style="background:#1D9E75"></div><div class="ld" style="background:#3A86FF"></div>
-        <div class="ld" style="background:rgba(255,255,255,.3)"></div><div class="ld" style="background:#3A86FF"></div><div class="ld" style="background:#1D9E75"></div>
-      </div>
-    </div>
-    <div><div class="bos-logo-text">CAMP</div><div class="bos-logo-sub">BOS Review Dashboard</div></div>
-  </div>
-  <div style="display:flex;align-items:center;gap:10px">
-    <span class="premium-badge">★ PREMIUM</span>
-    <span id="bos-course-badge" style="font-size:12px;color:#6B8EC7"></span>
-  </div>
-  <div style="display:flex;gap:10px">
-    <button class="btn btn-ghost" style="border-color:#2A4A8C;color:#6B8EC7" onclick="goToPreview()">← Back to Preview</button>
-    <button class="btn btn-premium" onclick="downloadDocx()">Export BOS Report</button>
-  </div>
-</nav>
-
-<div class="bos-wrap">
-  <div class="bos-header">
-    <div class="bos-title-block">
-      <div class="bos-title" id="bos-main-title">BOS Review Dashboard</div>
-      <div class="bos-sub" id="bos-main-sub">Detailed comparison for Board of Studies review</div>
-    </div>
-  </div>
-
-  <!-- Score cards -->
-  <div class="score-grid" id="bos-score-grid"></div>
-
-  <!-- Upload zone -->
-  <div class="upload-section">
-    <div class="upload-title">
-      <span style="font-size:18px">📄</span>
-      <span style="color:#fff">Benchmark University Course Document</span>
-      <span class="premium-badge">★ PREMIUM</span>
-    </div>
-    <div class="upload-sub">Upload a course syllabus PDF or DOCX from any university (VTU, IIT Bombay, NITK, etc.) to compare it with your updated course.</div>
-    <div id="upload-zone-wrap">
-      <div class="upload-zone" id="upload-zone"
-        ondragover="event.preventDefault();this.classList.add('drag-over')"
-        ondragleave="this.classList.remove('drag-over')"
-        ondrop="handleDrop(event)">
-        <input type="file" accept=".pdf,.docx,.doc,.txt" onchange="handleFileUpload(this)"/>
-        <div class="upload-icon">📂</div>
-        <div class="upload-text">Drag & drop or click to upload</div>
-        <div class="upload-hint">Supports PDF, DOCX, DOC, TXT · Max 10MB</div>
-      </div>
-      <div class="upload-done" id="upload-done">
-        <div class="upload-done-icon">✅</div>
-        <div>
-          <div class="upload-done-name" id="upload-filename">syllabus_IIT.pdf</div>
-          <div class="upload-done-meta" id="upload-filemeta">Parsed successfully · 4 units · 6 COs detected</div>
-        </div>
-        <button class="upload-clear" onclick="clearUpload()">Remove</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 3-column overview -->
-  <div class="compare-section">
-    <div class="compare-label">Document Overview — 3-Way Comparison</div>
-    <div class="three-col">
-      <div class="col-card col-prev">
-        <div class="col-hd"><div class="col-hd-title">Previous Course</div><span class="col-hd-badge cbadge-prev">Baseline</span></div>
-        <div class="col-body" id="col-prev-body"></div>
-      </div>
-      <div class="col-card col-new">
-        <div class="col-hd"><div class="col-hd-title">Updated / Generated</div><span class="col-hd-badge cbadge-new">CAMP Output</span></div>
-        <div class="col-body" id="col-new-body"></div>
-      </div>
-      <div class="col-card col-bench">
-        <div class="col-hd"><div class="col-hd-title" id="bench-col-title">Benchmark University</div><span class="col-hd-badge" id="bench-col-badge">Not Uploaded</span></div>
-        <div class="col-body" id="col-bench-body"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- CO Diff Table -->
-  <div class="compare-section">
-    <div class="compare-label">CO-by-CO Comparison</div>
-    <div style="background:#111E38;border:1px solid #1E3060;border-radius:12px;overflow:hidden;overflow-x:auto">
-      <table class="co-diff-table" id="co-diff-table"></table>
-    </div>
-  </div>
-
-  <!-- Bloom's Chart + Topic Overlap side by side -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
-    <div style="background:#111E38;border:1px solid #1E3060;border-radius:12px;padding:20px">
-      <div class="compare-label" style="margin-bottom:16px">Bloom's Level Distribution</div>
-      <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6B8EC7"><div style="width:10px;height:10px;border-radius:50%;background:#3A86FF"></div>Previous</div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6B8EC7"><div style="width:10px;height:10px;border-radius:50%;background:#1D9E75"></div>Updated</div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6B8EC7" id="bench-legend-item"><div style="width:10px;height:10px;border-radius:50%;background:var(--gold)"></div>Benchmark</div>
-      </div>
-      <div class="blooms-chart" id="blooms-chart"></div>
-    </div>
-    <div style="background:#111E38;border:1px solid #1E3060;border-radius:12px;padding:20px">
-      <div class="compare-label" style="margin-bottom:16px">Topic Coverage by Unit</div>
-      <div class="topic-grid" id="topic-grid"></div>
-    </div>
-  </div>
 
   <!-- CO-PO Matrix diff -->
   <div class="compare-section">
