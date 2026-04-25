@@ -1227,7 +1227,28 @@ function initWizard(){
 }
 function renderProg(){const steps=S.mode==='A'?[{n:1,l:'Upload Syllabus',d:'PDF analysis'},{n:2,l:'Textbooks',d:'References'}]:[{n:1,l:'Course Info',d:'Basic details'},{n:2,l:'New COs',d:'CO statements'},{n:3,l:'Textbooks',d:'References'}];el('step-progress').innerHTML=steps.map((s,i)=>`<div class="step-item"><div class="step-circle" id="sc-${s.n}">${s.n}</div><div class="step-info"><div class="slbl">${s.l}</div><div class="sdesc">${s.d}</div></div></div>${i<steps.length-1?`<div class="step-line" id="sl-${s.n}"></div>`:''}`).join('');}
 function updateProg(a){const t=S.mode==='A'?2:3;let displayStep=a;if(S.mode==='A'){if(a===3)displayStep=1;else if(a===4||a==='step-books')displayStep=2;}for(let i=1;i<=t;i++){const sc=el('sc-'+i),sl=el('sl-'+i);if(!sc)continue;if(i<displayStep){sc.className='step-circle done';sc.textContent='✓';}else if(i===displayStep){sc.className='step-circle active';sc.textContent=i;}else{sc.className='step-circle';sc.textContent=i;}if(sl)sl.className='step-line'+(i<displayStep?' done':'');}if(S.mode==='A'&&el('step3-back-btn')){el('step3-back-btn').style.display=a===3?'none':'inline-flex';}};
-function showStep(n){S.step=n;document.querySelectorAll('.form-panel').forEach(p=>p.classList.remove('active'));el('step-'+n).classList.add('active');updateProg(n);scroll(0,0);}
+function showStep(n){
+  S.step=n;
+  console.log(`🔍 showStep(${n}) - S.mode=${S.mode}`);
+  
+  const allPanels = document.querySelectorAll('.form-panel');
+  console.log(`📦 Found ${allPanels.length} form-panels:`, Array.from(allPanels).map(p => p.id));
+  
+  allPanels.forEach(p=>p.classList.remove('active'));
+  
+  const targetPanel = el('step-'+n);
+  console.log(`🎯 Target panel: step-${n}`, targetPanel);
+  
+  if (targetPanel) {
+    targetPanel.classList.add('active');
+    console.log(`✅ Active class added to step-${n}`);
+  } else {
+    console.error(`❌ Target panel step-${n} not found!`);
+  }
+  
+  updateProg(n);
+  scroll(0,0);
+}
 function showStepById(id){document.querySelectorAll('.form-panel').forEach(p=>p.classList.remove('active'));el(id).classList.add('active');let n;if(id==='step-books'){n=S.mode==='A'?4:3;}else{n=parseInt(id.replace('step-',''));}updateProg(n);scroll(0,0);}
 function nextStep(f){if(S.mode==='A'){if(f===3)showStepById('step-books');else showStep(f+1);}else{if(f===2){showStepById('step-books');}else showStep(f+1);}}
 function prevStep(f){if(S.mode==='A'){if(f===3)return;showStep(f-1);}else{if(f===1)return;showStep(f-1);}}
@@ -1408,7 +1429,7 @@ async function generatePreview(){
       // ✅ Log what was extracted
       console.log(`✅ Unit ${idx} extracted name: "${unitName}"`);
       
-      const coText = `${verb} ${unitName}`;
+      const coText = `${verb} concepts of ${unitName}`;
       
       // ✅ Generate keywords with SEMANTIC mapping to relevant POs only
       // Do NOT assign every keyword to all 12 POs - that's artificial and causes all-3s!
