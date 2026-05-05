@@ -1,7 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════════════
-// GLOBAL INITIALIZATION
-// ════════════════════════════════════════════════════════════════════════════════════
-
 // ✅ API Configuration
 const API_BASE = 'http://localhost:8081';
 
@@ -56,12 +52,135 @@ const S = {
   benchmarkName: '',
   benchmarkUploaded: false,
   pdfAnalysis: null,
-  analysisData: null
+  analysisData: null,
+  courseContent: [],
+  // Mode A specific state (aligned with user's requested state shape)
+  pdfData: null,
+  courseMeta: { title: '', code: '' },
+  generatedCOs: [],
+  coPoMatrix: [],
+  textbooks: [],  // ✅ Structured textbook list: {name, author}
+  authors: []
 };
 
 // ✅ Helper Functions
 function el(id) { return document.getElementById(id); }
 function dB(t) { const l = t.toLowerCase(); for (let i = 6; i >= 1; i--) for (const v of BV[i]) if (l.includes(v)) return i; return 3; }
+
+// Helpers for Mode A
+function extractTitleFromFileName(name) {
+  return name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
+}
+
+// Extract Course Code and Title from a block of text using regex and proximity heuristics
+function extractCourseMetaFromText(text) {
+  if (!text || typeof text !== 'string') return { code: '', title: '' };
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  
+  // STRICT REGEX per spec: [A-Z]{2,}-?\d{3,}
+  const codeRegex = /\b([A-Z]{2,}-?\d{3,})\b/g;
+  let foundCode = '';
+  let foundTitle = '';
+  let codeLineIndex = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(codeRegex);
+    if (match && match.length > 0) {
+      foundCode = match[0];
+      codeLineIndex = i;
+      break;
+    }
+  }
+
+  // Title extraction: look for non-metadata lines near course code
+  if (codeLineIndex >= 0) {
+    // Search upwards first (title usually appears before code)
+    for (let j = codeLineIndex - 1; j >= Math.max(0, codeLineIndex - 5); j--) {
+      const candidate = lines[j];
+      if (candidate && candidate.length > 8 && candidate.length < 150 && 
+          !/course\s*code|syllabus|semester|unit|scheme|credits|branch|duration/i.test(candidate)) {
+        foundTitle = candidate;
+        break;
+      }
+    }
+    // If not found above, search downwards
+    if (!foundTitle) {
+      for (let j = codeLineIndex + 1; j < Math.min(codeLineIndex + 3, lines.length); j++) {
+        const candidate = lines[j];
+        if (candidate && candidate.length > 8 && candidate.length < 150 && 
+            !/course\s*code|syllabus|semester|unit|scheme|credits|branch|duration/i.test(candidate)) {
+          foundTitle = candidate;
+          break;
+        }
+      }
+    }
+  }
+
+  // Fallback: first long descriptive line
+  if (!foundTitle && lines.length) {
+    const longLine = lines.find(l => l.length > 15 && l.length < 150 && !/©|All rights|Page|Syllabus|Code|Scheme/i.test(l));
+    if (longLine) foundTitle = longLine;
+  }
+
+  return { code: foundCode.trim(), title: foundTitle.trim() };
+}
+
+function generateCode() {
+  return 'AUTO-' + Date.now();
+}
+
+function cleanExtractedText(text) {
+  return (text || '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ' ')
+    .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function extractPdfText(file) {
+  if (typeof pdfjsLib === 'undefined') {
+    throw new Error('PDF parser not loaded.');
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let text = '';
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+    const pageText = content.items.map(item => item.str).join(' ');
+    text += pageText + '\n';
+  }
+
+  return cleanExtractedText(text);
+}
+
+function extractSyllabusMetaFromText(text) {
+  const cleaned = cleanExtractedText(text);
+  const lines = cleaned.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const codeMatch = cleaned.match(/\b[A-Z]{2,}-?\d{3,}\b/);
+  const semMatch = cleaned.match(/\b([IVX]{1,4}|[1-8])(st|nd|rd|th)?\s*Semester\b/i);
+  const creditsMatch = cleaned.match(/\bCredits?\s*[:\-]?\s*(\d{1,2})\b/i);
+  const branchMatch = cleaned.match(/\b(CSE|ISE|ECE|EEE|ME|CV|AIML|AI&ML|CSBS|IT|All Branches)\b/i);
+
+  let title = '';
+  for (const line of lines.slice(0, 25)) {
+    if (line.length > 8 && line.length < 120 && !/course code|credits|semester|scheme|syllabus/i.test(line)) {
+      title = line;
+      break;
+    }
+  }
+
+  return {
+    code: codeMatch ? codeMatch[0] : '',
+    title,
+    semester: semMatch ? semMatch[0] : '',
+    credits: creditsMatch ? creditsMatch[1] : '',
+    branch: branchMatch ? branchMatch[1].toUpperCase() : ''
+  };
+}
 
 // ✅ Program Outcome Statements (12 AICTE outcomes)
 const PO_STATEMENTS = {
@@ -89,6 +208,12 @@ const PO_STATEMENTS = {
 // - totalMatches >= 1.5  (rawScore >= 0.50) → Level 2 (Medium)
 // - totalMatches >= 0.75 (rawScore >= 0.25) → Level 1 (Low)
 // - totalMatches < 0.75  (rawScore < 0.25)  → Level 0 (None)
+// ✅ CORRECTED CO-PO MAPPING FORMULA (Aligned with React reference code)
+// Formula: rawScore = totalMatches / 3
+// Level 3 (High):   rawScore >= 0.75  (3+ matches OR equivalents)
+// Level 2 (Medium): rawScore >= 0.50  (1.5-2.25 matches)
+// Level 1 (Low):    rawScore >= 0.25  (0.75-1.5 matches)
+// Level 0 (None):   rawScore < 0.25   (0-0.75 matches)
 function computeMapping(co, poIndex) {
   if (!co || !co.keywords || !Array.isArray(co.keywords)) {
     return { matchedKeywords: [], unmatchedKeywords: [], totalMatches: 0, rawScore: 0, finalLevel: 0 };
@@ -113,10 +238,10 @@ function computeMapping(co, poIndex) {
       return;
     }
 
-    // ✅ Filter reasons that match this PO
+    // ✅ Filter reasons that match this PO (case-insensitive)
     // Backend uses: po (lowercase or uppercase)
     const matched = reasons
-      .filter(r => r && (r.po === poKey || r.po === poKey.toLowerCase()) && r.reason)
+      .filter(r => r && r.po && (r.po.toUpperCase() === poKey || r.po.toLowerCase() === poKey.toLowerCase()) && r.reason)
       .map(r => r.reason);
 
     if (matched.length > 0) {
@@ -126,7 +251,7 @@ function computeMapping(co, poIndex) {
         reasons: matched,
         count: matched.length
       });
-      // ✅ Add count of matched reasons
+      // ✅ Add count of matched reasons (each reason counts as 1 match)
       totalMatches += matched.length;
     } else {
       // ✅ Keyword did not match for this PO
@@ -134,10 +259,32 @@ function computeMapping(co, poIndex) {
     }
   });
 
-  // ✅ FORMULA: totalMatches / 3 (NOT keyword percentage)
-  // Level based on total reasons matched across all keywords
+  // ✅ FORMULA: totalMatches / 3
+  // Fallback: If no matched reasons found, try keyword-to-PO statement matching (low confidence)
+  if (totalMatches === 0 && co && Array.isArray(co.keywords)) {
+    const poText = PO_STATEMENTS[poKey] ? PO_STATEMENTS[poKey].toLowerCase() : '';
+    co.keywords.forEach(k => {
+      const kw = (k.keyword || '').toLowerCase();
+      if (kw && kw.length > 2 && poText.includes(kw)) {
+        // Treat as low-confidence match: only 0.5 points
+        totalMatches += 0.5;
+        matchedKeywords.push({ keyword: kw, reasons: ['PO statement keyword match (low confidence)'], count: 0.5 });
+      }
+    });
+  }
+
+  // ✅ CORRECT LEVEL CALCULATION (as per React reference code)
   const rawScore = totalMatches / 3;
-  const finalLevel = rawScore >= 0.75 ? 3 : rawScore >= 0.50 ? 2 : rawScore >= 0.25 ? 1 : 0;
+  let finalLevel = 0;
+  if (rawScore >= 0.75) {
+    finalLevel = 3;  // High
+  } else if (rawScore >= 0.50) {
+    finalLevel = 2;  // Medium
+  } else if (rawScore >= 0.25) {
+    finalLevel = 1;  // Low
+  } else {
+    finalLevel = 0;  // None
+  }
 
   return {
     matchedKeywords,
@@ -169,21 +316,40 @@ function genCOPO(cos, cosWithKeywords = null) {
       console.log(`📊 CO${i + 1}: Found ${coData.keywords.length} keywords from backend`);
     }
 
+    // Compute scores for all POs, then keep only top N non-zero to enforce sparsity
+    const poScores = [];
     POS.forEach(p => {
       const poIndex = parseInt(p.replace('PO', ''));
       let level = 0;
+      let totalMatches = 0;
+      let rawScore = 0;
 
-      // ✅ COMPUTE mapping ONLY using computeMapping()
-      // This ensures EXACT consistency with popup behavior
-      const mapping = computeMapping(coData, poIndex);
-      level = mapping.finalLevel;
+      if (S.coPoMatrix && S.coPoMatrix[i] && typeof S.coPoMatrix[i][p] !== 'undefined') {
+        level = S.coPoMatrix[i][p];
+        // approximate rawScore from level
+        rawScore = level / 3;
+      } else {
+        const mapping = computeMapping(coData, poIndex);
+        level = mapping.finalLevel;
+        totalMatches = mapping.totalMatches || 0;
+        rawScore = mapping.rawScore || 0;
+      }
 
-      // ✅ CRITICAL FIX: NO Bloom's fallback here!
-      // The popup uses computeMapping() result directly without fallback.
-      // To maintain consistency, the table must do the same.
-      // If keywords don't match a PO, level should be 0 (not fallback to Bloom's).
+      poScores.push({ p, level, totalMatches, rawScore });
+    });
 
-      pos[p] = level;
+    // Keep at most 6 non-zero PO mappings; choose by level, then rawScore
+    const nonZero = poScores.filter(x => x.level > 0).sort((a, b) => {
+      if (b.level !== a.level) return b.level - a.level;
+      if (b.rawScore !== a.rawScore) return b.rawScore - a.rawScore;
+      return b.totalMatches - a.totalMatches;
+    });
+
+    const allowed = new Set(nonZero.slice(0, 6).map(x => x.p));
+
+    POS.forEach(p => {
+      const score = poScores.find(x => x.p === p);
+      pos[p] = (score && score.level > 0 && allowed.has(p)) ? score.level : 0;
     });
 
     return {
@@ -194,12 +360,234 @@ function genCOPO(cos, cosWithKeywords = null) {
     };
   });
 }
+
+// Generate CO-PO matrix using generatedCOs or S.coData and store in S.coPoMatrix
+function generateMatrix() {
+  // Prefer authoritative S.coData (contains keywords with reasons)
+  const isModeA = S.mode === 'A';
+
+  const matrix = (S.coData && S.coData.length > 0)
+    ? S.coData.map(cd => {
+      if (isModeA) {
+        // Mode A: strict semantic mapping with sparsity (max 5 non-zero POs)
+        const coText = (cd.CO || cd.co || cd.text || '').toString().toLowerCase();
+        const keywordText = (cd.keywords || []).map(k => (k.keyword || '').toLowerCase()).join(' ');
+        const fullText = `${coText} ${keywordText}`.trim();
+        const scored = [];
+        for (let p = 1; p <= 12; p++) {
+          const sem = computeMappingSemantic(fullText, p);
+          scored.push({ po: `PO${p}`, level: sem.level, matches: sem.matchCount });
+        }
+
+        const selected = scored
+          .filter(x => x.level > 0)
+          .sort((a, b) => (b.level - a.level) || (b.matches - a.matches))
+          .slice(0, 5);
+
+        const keep = new Set(selected.map(x => x.po));
+        const row = {};
+        for (let p = 1; p <= 12; p++) {
+          const key = `PO${p}`;
+          const found = scored.find(x => x.po === key);
+          row[key] = keep.has(key) ? (found ? found.level : 0) : 0;
+        }
+        return row;
+      }
+
+      // Non-Mode A: fallback to existing reason-based computeMapping
+      const row = {};
+      for (let i = 1; i <= 12; i++) {
+        const mapping = computeMapping(cd, i);
+        row[`PO${i}`] = mapping.finalLevel;
+      }
+      return row;
+    })
+    : (S.generatedCOs && S.generatedCOs.length > 0)
+      ? S.generatedCOs.map(gco => {
+        const row = {};
+        // construct a lightweight coData for mapping: keywords with no reasons
+        const lightweight = { keywords: (gco.keywords || []).map(k => ({ keyword: k, reasons: [] })) };
+        for (let i = 1; i <= 12; i++) {
+          const mapping = computeMapping(lightweight, i);
+          row[`PO${i}`] = mapping.finalLevel;
+        }
+        return row;
+      })
+      : [];
+  S.coPoMatrix = matrix;
+  return matrix;
+}
+// ✅ STRICT SEMANTIC MAPPING - NBA Style CO-PO Alignment
+// NO artificial boosting, NO generic keywords, ONLY strong domain-specific matches
+function computeMappingSemantic(coText, poIndex) {
+  const text = (coText || '').toLowerCase();
+  
+  // ✅ STRICT PO-specific keywords (NO overlapping, NO generic terms)
+  // Each keyword belongs to AT MOST one or two POs
+  const rules = {
+    PO1: {
+      // Engineering knowledge & fundamentals
+      keywords: ["fundamental", "principle", "theory", "basic", "foundation", "core", "definition", "element"],
+      bloomBonus: [1, 2],
+      weight: 1.0
+    },
+    PO2: {
+      // Problem analysis & identification
+      keywords: ["analyze", "analysis", "identify", "problem", "evaluate", "assess", "investigate", "examination"],
+      bloomBonus: [4],
+      weight: 1.0
+    },
+    PO3: {
+      // Design, development, implementation
+      keywords: ["design", "develop", "implementation", "implement", "create", "build", "construct", "engineer"],
+      bloomBonus: [3, 5, 6],
+      weight: 1.0
+    },
+    PO4: {
+      // Research & experimentation
+      keywords: ["research", "experiment", "experimental", "investigation", "methodology", "approach", "technique"],
+      bloomBonus: [4, 5],
+      weight: 1.0
+    },
+    PO5: {
+      // Modern tools, technology, automation
+      keywords: ["tool", "tools", "technology", "devops", "automation", "ci/cd", "cloud", "framework", "platform", "software", "deployment", "pipeline"],
+      bloomBonus: [3, 5],
+      weight: 1.0
+    },
+    PO6: {
+      // Engineers and society / social impact
+      keywords: ["society", "social", "community", "stakeholder", "impact", "responsibility", "sustainable"],
+      bloomBonus: [2, 3],
+      weight: 1.0
+    },
+    PO7: {
+      // Environment & sustainability
+      keywords: ["environment", "sustainability", "sustainable", "green", "ecological", "carbon", "emission"],
+      bloomBonus: [3, 4],
+      weight: 1.0
+    },
+    PO8: {
+      // Ethics & professional responsibility
+      keywords: ["ethical", "ethics", "integrity", "compliance", "legal", "moral", "professional", "conduct"],
+      bloomBonus: [2, 3],
+      weight: 1.0
+    },
+    PO9: {
+      // Teamwork & collaboration (STRICT - no "group" which is too generic)
+      keywords: ["team", "teamwork", "collaboration", "collaborative", "coordinate", "cooperation", "work together"],
+      bloomBonus: [2, 3],
+      weight: 1.0
+    },
+    PO10: {
+      // Communication (very specific)
+      keywords: ["communication", "communicate", "presentation", "presentation", "document", "documentation", "report", "written", "verbal"],
+      bloomBonus: [3, 4],
+      weight: 1.0
+    },
+    PO11: {
+      // Project management (specific to PM, not generic)
+      keywords: ["project", "management", "planning", "plan", "schedule", "timeline", "deliverable", "milestone", "resource", "scope"],
+      bloomBonus: [3, 4, 5],
+      weight: 1.0
+    },
+    PO12: {
+      // Lifelong learning & self-development
+      keywords: ["learn", "learning", "self-learning", "continuous", "improvement", "adapt", "adaptation", "skill development"],
+      bloomBonus: [2, 3, 4],
+      weight: 1.0
+    }
+  };
+
+  const poKey = `PO${poIndex}`;
+  const poRule = rules[poKey] || { keywords: [], bloomBonus: [], weight: 1.0 };
+  
+  let matchCount = 0;
+  const bloomLevel = extractBloomLevel(coText);
+  
+  // ✅ STRICT matching: word boundaries only, case-insensitive
+  poRule.keywords.forEach(k => {
+    const regex = new RegExp(`\\b${k}\\b`, 'i');
+    if (regex.test(text)) {
+      matchCount++;
+      // ✅ NO Bloom bonus - keep it pure keyword-based
+    }
+  });
+
+  // Level rule (Mode A requirement): 0=>0, 1=>2, 2+=>3
+  let level = 0;
+  if (matchCount >= 2) {
+    level = 3;
+  } else if (matchCount === 1) {
+    level = 2;
+  }
+  
+  return { level, matchCount };
+}
+
+// ✅ Extract Bloom's level from CO text (detect verb pattern)
+function extractBloomLevel(coText) {
+  const text = (coText || '').toLowerCase();
+  
+  const bloomVerbs = {
+    1: ["recall", "recognize", "identify", "list", "define"],
+    2: ["understand", "summarize", "classify", "compare", "explain"],
+    3: ["apply", "implement", "solve", "use", "demonstrate"],
+    4: ["analyze", "categorize", "examine", "compare", "contrast"],
+    5: ["evaluate", "critique", "assess", "appraise", "judge"],
+    6: ["create", "design", "develop", "synthesize", "propose"]
+  };
+  
+  for (let level = 6; level >= 1; level--) {
+    const verbs = bloomVerbs[level];
+    if (verbs.some(v => text.includes(v))) {
+      return level;
+    }
+  }
+  return 0; // No Bloom verb found, default neutral
+}
 // ════════════════════════════════════════
 // SYLLABUS GENERATION
 // ════════════════════════════════════════
 const SYL_TEMPLATES={python:[{t:'Python Fundamentals',tp:'Introduction to Python, History and Applications, Variables, Data Types, Type Casting, Operators, Precedence, Keywords, I/O Statements, Conditionals, Loops (for/while), Functions, Lambda Functions, User-Defined Functions'},{t:'Strings, Exceptions & Regular Expressions',tp:'String Operations, Unicode, String Formatting, Format Specifiers, Common String Methods, Slicing, Exception Handling (try/except/finally), Custom Exceptions, Regular Expressions — Pattern Matching, Case Studies (Street Addresses, Roman Numerals)'},{t:'Object Oriented Programming & Files',tp:'Defining Classes, __init__ Method, Instantiating Classes, Abstraction, Encapsulation, Single & Multiple Inheritance, Polymorphism, Operator Overloading, Decorators, Descriptors, File I/O — Text and Binary Files'},{t:'NumPy & Array Processing',tp:'Introduction to NumPy, Creating Arrays, Indexing and Slicing, Array Transposition, Universal Array Functions, Array Processing, Broadcasting, Array I/O'},{t:'Pandas & Data Visualization',tp:'Introduction to Pandas, Series and DataFrames, Data Cleaning and Aggregation, GroupBy, Matplotlib — Line/Bar/Histogram/Scatter Charts, Data Visualization with Seaborn'}],network:[{t:'Network Fundamentals & OSI Model',tp:'Introduction to Networks, LAN/WAN/MAN, OSI vs TCP/IP Model, Topologies, Transmission Media, Signal Encoding, Multiplexing, Switching'},{t:'Data Link & Network Layer',tp:'Data Link Layer Functions, Error Detection (CRC/Hamming), Flow Control, MAC Protocols, Ethernet, IP Addressing, IPv4/IPv6, Subnetting, Routing Algorithms, ARP/RARP'},{t:'Transport & Application Layer',tp:'TCP vs UDP, Connection Establishment, Flow & Congestion Control, DNS, HTTP/HTTPS, FTP, SMTP, POP3/IMAP, DHCP'},{t:'Network Security',tp:'Cryptography Basics, Symmetric (AES/DES) & Asymmetric Encryption (RSA), Hash Functions, Digital Signatures, SSL/TLS, Firewalls, IDS/IPS, VPN'}],default:[{t:'Foundations & Core Concepts',tp:'Introduction and Overview, Historical Context, Fundamental Principles, Key Terminology, Scope and Applications, Basic Algorithms'},{t:'Core Techniques & Methods',tp:'Methodologies, Algorithms, Data Structures, Implementation Strategies, Problem Solving, Case Studies'},{t:'Advanced Topics & Applications',tp:'Advanced Algorithms, Optimization, Real-World Applications, Industry Practices, Integration Concepts'},{t:'Tools, Frameworks & Project Work',tp:'Tools and Frameworks, Best Practices, Testing and Validation, Documentation, Mini Project Application'}]};
 function genSyllabus(title,cos,credits){const l=title.toLowerCase();const k=l.includes('python')?'python':(l.includes('network')||l.includes('security')||l.includes('cns'))?'network':'default';const t=SYL_TEMPLATES[k];const n=parseInt(credits)>=4?Math.min(5,t.length):4;return t.slice(0,n).map((u,i)=>({num:i+1,title:u.t,topics:u.tp}));}
-function genUpdated(existing,cos){const ct=cos.join(' ').toLowerCase();let added=0,removed=0,modified=0,same=0;const units=existing.map((u,i)=>{const topics=(u.topics||'').split(/[,\n]+/).map(t=>t.trim()).filter(t=>t.length>2);const diff=topics.map(t=>{const tl=t.toLowerCase();if(tl.includes('legacy')||tl.includes('deprecated')||tl.includes('2.x')){removed++;return{text:t,type:'removed'};}if(modified<2&&Math.random()<0.15){modified++;return{text:t,type:'modified',newText:t+' (Updated for current standards)'};}same++;return{text:t,type:'same'};});if(i===0){diff.push({text:'Type Hints and Annotations (PEP 526)',type:'added'});added++;}if(i===2&&ct.includes('overload')){diff.push({text:'Protocol Classes and Structural Subtyping',type:'added'});added++;}return{num:i+1,title:u.title||`Unit ${i+1}`,diffTopics:diff};});const tot=added+removed+modified+same;const pct=tot>0?Math.round(((added+removed+modified)/tot)*100):22;return{units,stats:{added,removed,modified,same,modPct:pct}};}
+function genUpdated(existing, cos) {
+  const ct = cos.join(' ').toLowerCase();
+  let added = 0, removed = 0, modified = 0, same = 0;
+  
+  const units = existing.map((u, i) => {
+    const topics = (u.topics || '').split(/[,\n]+/).map(t => t.trim()).filter(t => t.length > 2);
+    const diff = topics.map(t => {
+      const tl = t.toLowerCase();
+      if (tl.includes('legacy') || tl.includes('deprecated') || tl.includes('2.x')) {
+        removed++;
+        return { text: t, type: 'removed' };
+      }
+      if (modified < 2 && Math.random() < 0.15) {
+        modified++;
+        return { text: t, type: 'modified', newText: t + ' (Updated for current standards)' };
+      }
+      same++;
+      return { text: t, type: 'same' };
+    });
+    
+    if (i === 0) {
+      diff.push({ text: 'Type Hints and Annotations (PEP 526)', type: 'added' });
+      added++;
+    }
+    if (i === 2 && ct.includes('overload')) {
+      diff.push({ text: 'Protocol Classes and Structural Subtyping', type: 'added' });
+      added++;
+    }
+    
+    return { num: i + 1, title: u.title || `Unit ${i + 1}`, diffTopics: diff };
+  });
+  
+  const tot = added + removed + modified + same;
+  const pct = tot > 0 ? Math.round(((added + removed + modified) / tot) * 100) : 22;
+  
+  return { units, stats: { added, removed, modified, same, modPct: pct } };
+}
 
 // ════════════════════════════════════════
 // CO-PO KEYWORD BREAKDOWN (Interactive Modal)
@@ -428,57 +816,187 @@ function makeMatrixInteractive() {
     });
   });
 }
-function goToLanding(){show('view-landing');scroll(0,0);}
+function goToLanding(){
+  show('view-landing');
+  if (el('wizard-shell')) el('wizard-shell').style.display='none';
+  if (el('view-select')) el('view-select').style.display='none';
+  if (el('view-preview')) el('view-preview').style.display='none';
+  if (el('view-bos')) el('view-bos').style.display='none';
+  scroll(0,0);
+}
 function goToApp(){show('view-app');goToSelect();}
-function goToSelect(){el('view-select').style.display='block';el('wizard-shell').style.display='none';el('view-preview').style.display='none';scroll(0,0);}
-function goToPreview(){show('view-app');el('view-preview').style.display='block';el('wizard-shell').style.display='none';el('view-select').style.display='none';scroll(0,0);}
-function goToBOS(){buildBOSDashboard();show('view-bos');scroll(0,0);}
-function goToBOSDirect(){S.mode='A';S.cos=['Write simple computational programs using functions','Write programs to compute mathematical functions using loops','Write data processing scripts using string and dictionaries','Write classes using OOP features including inheritance','Apply NumPy package for data analysis','Write visualization scripts using pandas and matplotlib'];S.courseTitle='Introduction to Python Programming';S.courseCode='B22EFS415';S.courseSem='IV Semester';S.courseBranch='CSE';S.generatedSyllabus=genSyllabus('Python',S.cos,'3');S.existingUnits=S.generatedSyllabus.map((u,i)=>({title:u.title,topics:u.topics}));const r=genUpdated(S.existingUnits,S.cos);S.modStats=r.stats;buildBOSDashboard();show('view-bos');scroll(0,0);}
+function goToSelect(){
+  show('view-app');
+  el('view-select').style.display='block';
+  el('wizard-shell').style.display='none';
+  el('view-preview').style.display='none';
+  if(el('view-bos')) el('view-bos').style.display='none';
+  scroll(0,0);
+}
+function goToPreview(){
+  show('view-app');
+  el('view-preview').style.display='block';
+  el('wizard-shell').style.display='none';
+  el('view-select').style.display='none';
+  if(el('view-bos')) el('view-bos').style.display='none';
+  scroll(0,0);
+}
+function goToBOS(){
+  buildBOSDashboard();
+  if (el('view-bos')) {
+    el('view-bos').style.display='block';
+    el('view-preview').style.display='none';
+    el('wizard-shell').style.display='none';
+    el('view-select').style.display='none';
+    show('view-bos');
+  } else {
+    console.warn('Missing view-bos container, falling back to preview view');
+    goToPreview();
+  }
+  scroll(0,0);
+}
+function goToBOSDirect(){
+  S.mode='A';
+  S.cos=['Write simple computational programs using functions','Write programs to compute mathematical functions using loops','Write data processing scripts using string and dictionaries','Write classes using OOP features including inheritance','Apply NumPy package for data analysis','Write visualization scripts using pandas and matplotlib'];
+  S.courseTitle='Introduction to Python Programming';
+  S.courseCode='B22EFS415';
+  S.courseSem='IV Semester';
+  S.courseBranch='CSE';
+  S.generatedSyllabus=genSyllabus('Python',S.cos,'3');
+  S.existingUnits=S.generatedSyllabus.map((u,i)=>({title:u.title,topics:u.topics}));
+  const r=genUpdated(S.existingUnits,S.cos);
+  S.modStats=r.stats;
+  goToBOS();
+}
 function backToForm(){el('view-preview').style.display='none';el('wizard-shell').style.display='block';showStepById('step-books');scroll(0,0);}
 function backFromBooks(){S.mode==='A'?showStep(3):showStep(2);}
 
 // ═══════════════════════════════════════════════════════════════════════
-// TEXTBOOKS UPLOAD HANDLER
-// ═══════════════════════════════════════════════════════════════════════
-let S_textbookAuthors = [];
-
-function handleTextbooksUpload(input) {
+// TEXTBOOKS UPLOAD HANDLER (Mode A)
+// ✅ Extracts textbook names, authors, and stores in structured format
+async function handleTextbooksUpload(input) {
   if (!input.files || !input.files[0]) return;
   const file = input.files[0];
   const fileName = file.name;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const text = e.target.result;
+  try {
+    let text = '';
+    if (file.name.toLowerCase().endsWith('.pdf')) {
+      text = await extractPdfText(file);
+    } else {
+      text = cleanExtractedText(await file.text());
+    }
+
+    // Extract ONLY author names silently (no display in upload step)
     const authors = extractAuthors(text);
-    S_textbookAuthors = authors;
+    S.authors = authors;
+    S.textbooks = []; // Silently store, don't display
+    
     el('textbooks-filename').textContent = fileName;
-    el('textbooks-authors').innerHTML = authors.map(a => `<div>• ${a}</div>`).join('');
     el('textbooks-result').style.display = 'block';
-    console.log('📚 Textbooks uploaded:', {file: fileName, authors: authors});
-  };
-  reader.readAsText(file);
+
+    // SILENT: Just show confirmation without details
+    const resultsArea = el('textbooks-result');
+    const existingDisplay = resultsArea.querySelector('[data-textbooks-preview]');
+    if (existingDisplay) existingDisplay.remove();
+
+    const display = document.createElement('div');
+    display.setAttribute('data-textbooks-preview', 'true');
+    display.style.cssText = 'margin-top: 12px; padding: 12px; background: #f0fdf4; border-radius: 8px; font-size: 12px; color:#166534';
+    display.innerHTML = authors.length > 0
+      ? `<div>✓ ${authors.length} author(s) extracted from textbook file</div>`
+      : '<div>✓ Textbook file uploaded successfully</div>';
+    resultsArea.appendChild(display);
+
+    console.log('📚 Textbook upload complete (silent mode):', { file: fileName, authorsExtracted: authors.length });
+  } catch (err) {
+    console.error('Textbook extraction failed:', err);
+    alert('Unable to parse textbook file. Please upload a clear PDF/TXT file.');
+  }
+}
+
+function extractTextbooks(text) {
+  // ✅ Parse textbooks: "Title by Author" or "Title - Author" format
+  // ROBUST handling for corrupted/garbled text from PDF extraction
+  const textbooks = [];
+  
+  // Filter out corrupted/garbled lines (mostly special characters, too short, etc)
+  const lines = cleanExtractedText(text).split('\n')
+    .map(l => l.trim())
+    .filter(l => {
+      // Skip lines that are too short
+      if (l.length < 5) return false;
+      // Skip lines that are mostly special characters or corrupted Unicode
+      const alphanumericCount = (l.match(/[a-zA-Z0-9\s]/g) || []).length;
+      const rubbish = l.length - alphanumericCount;
+      // If more than 50% is non-alphanumeric, skip it (corrupted)
+      if (rubbish / l.length > 0.5) return false;
+      return true;
+    });
+  
+  console.log('📚 Filtered textbook lines:', lines.length, 'from', text.split('\n').length);
+  
+  const patterns = [
+    /^(.*?)\s+by\s+([A-Za-z .,&]+)$/i,
+    /^(.*?)\s*[-–]\s*([A-Za-z .,&]+)$/,
+    /^([A-Za-z0-9 :,'()\-]{6,120})\s*\|\s*([A-Za-z .,&]{3,80})$/
+  ];
+  
+  for (const line of lines) {
+    for (const pattern of patterns) {
+      const match = line.match(pattern);
+      if (match && match[1] && match[2]) {
+        const name = match[1].trim();
+        const author = match[2].trim();
+        // Validate: name should be 5+ chars, author should be 3+ chars, both mostly alphanumeric
+        const nameAlpha = (name.match(/[a-zA-Z0-9\s]/g) || []).length;
+        const authorAlpha = (author.match(/[a-zA-Z0-9\s]/g) || []).length;
+        if (name.length >= 5 && author.length >= 3 && nameAlpha / name.length > 0.7 && authorAlpha / author.length > 0.7) {
+          textbooks.push({ title: name, author });
+          console.log('✅ Extracted textbook:', { name, author });
+          break;
+        }
+      }
+    }
+  }
+  
+  // ✅ Fallback: extract individual names if parsing fails
+  if (textbooks.length === 0) {
+    console.log('⚠️ No structured textbooks found, extracting author names...');
+    const names = extractAuthors(text);
+    return names.map(n => ({ title: n, author: 'Retrieved from PDF' }));
+  }
+  
+  const deduplicated = [...new Map(textbooks.map(tb => [tb.name, tb])).values()].slice(0, 10);
+  console.log('📚 Final textbooks extracted:', deduplicated);
+  return deduplicated;
 }
 
 function extractAuthors(text) {
-  const lines = text.split('\n');
   const authors = [];
-  for (const line of lines) {
-    if (line.match(/^\s*(Author|By|Written by|Author Name|Authors):\s*(.+)/i)) {
-      const match = line.match(/:\s*(.+)$/i);
-      if (match) authors.push(match[1].trim());
-    }
-    if (line.match(/^[A-Z][a-z]+\s+[A-Z][a-z]+/) && authors.length < 10) {
-      const potential = line.split(/[,;]/)[0].trim();
-      if (potential.length > 5 && potential.length < 100) authors.push(potential);
+  // More robust name extraction: look for capitalized words and common author name patterns
+  const namePattern = /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*|[A-Z]\.[\s]*[A-Z][a-z]+)/g;
+  const matches = text.match(namePattern) || [];
+  
+  for (const match of matches) {
+    const name = match.trim();
+    // Validate: 3+ chars, 100 chars max, 1-4 words
+    if (name.length >= 3 && name.length <= 100 && name.split(/\s+/).length <= 4) {
+      // Skip common non-author words and single letters
+      if (!['The', 'And', 'For', 'With', 'From', 'By', 'In', 'On', 'Of'].includes(name) && name.length > 1) {
+        authors.push(name);
+      }
     }
   }
-  return [...new Set(authors)].slice(0, 10);
+  
+  const deduplicated = [...new Set(authors)].slice(0, 10);
+  console.log('👥 Extracted author names:', deduplicated);
+  return deduplicated;
 }
 
 function clearTextbooksUpload() {
-  S_textbookAuthors = [];
-  el('textbooks-file').value = '';
-  el('textbooks-result').style.display = 'none';
+  S.authors = [];
+  const tbFile = el('textbooks-file'); if (tbFile) tbFile.value = '';
+  const tbResult = el('textbooks-result'); if (tbResult) tbResult.style.display = 'none';
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -488,17 +1006,47 @@ function clearTextbooksUpload() {
 function downloadDocx() {
   console.log('📥 Generating DOCX...');
   
-  const courseTitle = S.courseTitle || 'Course Title';
-  const courseCode = S.courseCode || 'XXXXX';
-  const semester = S.courseSem || 'Semester';
-  const branch = S.courseBranch || 'Branch';
+  const courseTitle = (S.courseTitle && S.courseTitle.trim()) || 'Unknown Course';
+  const courseCode = (S.courseCode && S.courseCode.trim()) || 'XXXXX';
+  const semester = (S.courseSem && S.courseSem.trim()) || 'IV Semester';
+  const branch = (S.courseBranch && S.courseBranch.trim()) || 'CSE';
   const credits = el('f-credits')?.value || '3';
-  const courseType = el('f-type')?.value || 'HC';
-  const overview = el('f-overview')?.value || 'Course Overview';
+  const courseType = el('f-type')?.value || 'SC';
+  const overview = S.mode === 'A'
+    ? (S.analysisData?.improvements?.slice(0, 3).join('. ') || 'Course has been updated with enhanced content.')
+    : (el('f-overview')?.value || 'Comprehensive course covering fundamentals and advanced topics');
   const assess = el('f-assess')?.value || 'CIE 50% / SEE 50%';
   
-  const cos = S.cos;
+  const cos = Array.isArray(S.cos) ? S.cos : [];
+  if (!cos.length) {
+    alert('Please generate Course Outcomes before downloading the DOCX.');
+    return;
+  }
+
+  if (!S.coData || !S.coData.length) {
+    S.coData = cos.map(co => ({ CO: co, keywords: [] }));
+  }
+  if (!S.coPoMatrix || !S.coPoMatrix.length) {
+    S.coPoMatrix = generateMatrix();
+  }
+
   const rows = genCOPO(cos, S.coData);
+  
+  console.log('📄 DOCX Generation Started:', {
+    courseCode,
+    courseTitle,
+    cosCount: cos.length,
+    rowsGenerated: rows.length,
+    dataValid: S.coData && S.coData.length > 0,
+    mode: S.mode,
+    textbooksCount: (S.authors || []).length
+  });
+  
+  if (rows.length > 0) {
+    const firstRow = rows[0];
+    const populatedPOs = Object.values(firstRow.pos).filter(v => v > 0).length;
+    console.log('✅ Sample CO-PO Matrix:', { CO: firstRow.co, mappedPOs: populatedPOs });
+  }
   
   let html = `<!DOCTYPE html>
 <html>
@@ -509,86 +1057,110 @@ function downloadDocx() {
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { 
-    font-family: 'Calibri', 'Arial', sans-serif; 
+    font-family: 'Times New Roman', Times, serif; 
     color: #000; 
-    line-height: 1.3; 
-    padding: 36pt;
-    page-margin: 36pt;
+    line-height: 1.4; 
+    padding: 40pt;
+    page-margin: 40pt;
+    background: white;
   }
-  .page-break { page-break-after: always; }
-  h1 { font-size: 16pt; font-weight: bold; margin: 18pt 0 12pt 0; color: #1B3A6B; border-bottom: 2px solid #1B3A6B; padding-bottom: 6pt; }
-  h2 { font-size: 13pt; font-weight: bold; margin: 14pt 0 8pt 0; color: #1B3A6B; }
-  h3 { font-size: 12pt; font-weight: bold; margin: 10pt 0 6pt 0; }
-  p { font-size: 11pt; margin-bottom: 10pt; text-align: justify; line-height: 1.4; }
-  ol, ul { margin-left: 24pt; margin-bottom: 10pt; }
-  li { margin-bottom: 6pt; font-size: 11pt; }
+  .page-break { page-break-after: always; margin-top: 20pt; }
+  h1 { 
+    font-size: 14pt; 
+    font-weight: bold; 
+    margin: 20pt 0 12pt 0; 
+    color: #000; 
+    border-bottom: 2pt solid #000; 
+    padding-bottom: 6pt;
+    text-transform: uppercase;
+  }
+  h2 { 
+    font-size: 12pt; 
+    font-weight: bold; 
+    margin: 14pt 0 10pt 0; 
+    color: #000;
+    text-transform: uppercase;
+  }
+  h3 { font-size: 11pt; font-weight: bold; margin: 10pt 0 6pt 0; }
+  p { font-size: 11pt; margin-bottom: 12pt; text-align: justify; line-height: 1.5; }
+  ol { margin-left: 24pt; margin-bottom: 12pt; }
+  ol li { margin-bottom: 6pt; font-size: 11pt; }
+  ul { margin-left: 20pt; margin-bottom: 12pt; }
+  ul li { margin-bottom: 4pt; font-size: 11pt; }
   table { width: 100%; border-collapse: collapse; margin: 12pt 0; font-size: 10pt; }
   th { 
-    background-color: #1B3A6B; 
+    background-color: #000; 
     color: white; 
-    padding: 8pt; 
+    padding: 10pt 8pt; 
     text-align: center;
     font-weight: bold;
-    border: 1px solid #1B3A6B;
+    border: 1pt solid #000;
+    font-size: 10pt;
   }
   td { 
-    border: 1px solid #000; 
+    border: 1pt solid #000; 
     padding: 8pt; 
     text-align: left;
+    font-size: 10pt;
   }
   td.center { text-align: center; }
-  tr:nth-child(even) { background-color: #f5f5f5; }
-  .header-table { margin: 12pt 0; }
-  .header-table td { border: 1px solid #000; padding: 6pt; }
-  .course-title { font-size: 12pt; font-weight: bold; margin-bottom: 6pt; }
-  .course-meta { font-size: 10pt; margin-bottom: 12pt; }
-  .note { font-size: 9pt; font-style: italic; color: #555; margin-top: 6pt; }
+  tr:nth-child(even) { background-color: #f9f9f9; }
+  .header-table { margin: 12pt 0 24pt 0; }
+  .header-table th { background: white; color: #000; text-align: left; font-weight: bold; border: 1pt solid #ccc; }
+  .header-table td { border: 1pt solid #ccc; padding: 8pt; }
+  .note { font-size: 9pt; font-style: italic; color: #555; margin: 8pt 0; }
 </style>
 </head>
 <body>
 
 <!-- TITLE PAGE / HEADER -->
 <div style="margin-bottom: 24pt;">
-  <table class="header-table">
+  <table class="header-table" style="margin-bottom: 20pt;">
     <tr>
-      <td style="width: 50%;"><strong>Course Title</strong></td>
-      <td>${courseTitle}</td>
-      <td style="width: 20%;"><strong>Course Type</strong></td>
-      <td style="width: 20%;">${courseType}</td>
+      <th style="width: 30%; text-align: left;">COURSE TITLE</th>
+      <td style="width: 70%;">${courseTitle}</td>
     </tr>
     <tr>
-      <td><strong>Course Code</strong></td>
+      <th style="text-align: left;">COURSE CODE</th>
       <td>${courseCode}</td>
-      <td><strong>Credits</strong></td>
+    </tr>
+    <tr>
+      <th style="text-align: left;">COURSE TYPE</th>
+      <td>${courseType}</td>
+    </tr>
+    <tr>
+      <th style="text-align: left;">CREDITS</th>
       <td>${credits}</td>
     </tr>
     <tr>
-      <td><strong>Semester</strong></td>
+      <th style="text-align: left;">SEMESTER</th>
       <td>${semester}</td>
-      <td><strong>Branch</strong></td>
+    </tr>
+    <tr>
+      <th style="text-align: left;">BRANCH/SPECIALIZATION</th>
       <td>${branch}</td>
     </tr>
   </table>
 </div>
 
 <!-- COURSE STRUCTURE -->
-<h1>COURSE STRUCTURE</h1>
+<h1>Course Structure</h1>
 <table>
   <thead>
     <tr>
       <th>Component</th>
-      <th>L</th>
-      <th>T</th>
-      <th>P</th>
+      <th>Lectures (L)</th>
+      <th>Tutorials (T)</th>
+      <th>Practical (P)</th>
       <th>Credits</th>
       <th>Contact Hours</th>
-      <th>Workload</th>
-      <th>Assessment</th>
+      <th>Total Workload</th>
+      <th>Assessment Scheme</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>Lecture</td>
+      <td>Course</td>
       <td class="center">3</td>
       <td class="center">-</td>
       <td class="center">-</td>
@@ -597,185 +1169,185 @@ function downloadDocx() {
       <td class="center">${credits}</td>
       <td>${assess}</td>
     </tr>
-    <tr>
-      <td>Tutorial</td>
-      <td class="center">-</td>
-      <td class="center">-</td>
-      <td class="center">-</td>
-      <td class="center">-</td>
-      <td class="center">-</td>
-      <td class="center">-</td>
-      <td>—</td>
-    </tr>
-    <tr>
-      <td>Practical</td>
-      <td class="center">-</td>
-      <td class="center">-</td>
-      <td class="center">-</td>
-      <td class="center">-</td>
-      <td class="center">-</td>
-      <td class="center">-</td>
-      <td>—</td>
-    </tr>
   </tbody>
 </table>
 
 <!-- COURSE OVERVIEW -->
-<h1>COURSE OVERVIEW</h1>
+<h1>Course Overview</h1>
 <p>${overview}</p>
 
 <!-- COURSE OBJECTIVES -->
-<h1>COURSE OBJECTIVES</h1>
-<p>The objectives of this course are to:</p>
-<ol>`;
-
-cos.forEach((co, i) => {
-  const verb = co.split(' ')[0];
-  html += `<li>${verb.charAt(0).toUpperCase() + verb.slice(1)} ${co.substring(co.indexOf(' ')+1, 100)}</li>`;
-});
-
-html += `
+<h1>Course Objectives</h1>
+<p>Upon successful completion of this course, students will develop comprehensive understanding and practical skills. The course objectives are:</p>
+<ol>
+${cos.map((co, i) => `<li>${co}</li>`).join('')}
 </ol>
 
 <!-- COURSE OUTCOMES -->
-<h1>COURSE OUTCOMES</h1>
-<p>After completion of the course, the student will be able to:</p>
+<h1>Course Outcomes</h1>
+<p>After completion of this course, the student will be able to:</p>
 <table>
   <thead>
     <tr>
-      <th>CO#</th>
-      <th>Course Outcomes</th>
-      <th>POs</th>
-      <th>PSOs</th>
+      <th style="width: 8%;">CO#</th>
+      <th style="width: 60%;">Course Outcomes (COs)</th>
+      <th style="width: 12%;">Bloom Level</th>
+      <th style="width: 20%;">Key Topics</th>
     </tr>
   </thead>
-  <tbody>`;
-
-cos.forEach((co, i) => {
-  const poList = rows[i]?.pOs ? rows[i].pOs.split(',').slice(0, 5).join(',') : '1,2,3,4,5,12';
-  html += `
-    <tr>
+  <tbody>
+${cos.map((co, i) => {
+  const bloomLevel = getBloomsLevelForCO(co);
+  const bloomText = ['', 'Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'][bloomLevel] || 'Understand';
+  return `<tr>
       <td class="center"><strong>CO${i+1}</strong></td>
       <td>${co}</td>
-      <td class="center">${poList}</td>
-      <td class="center">1, 2, 3</td>
+      <td class="center"><strong>L${bloomLevel}</strong></td>
+      <td>-</td>
     </tr>`;
-});
-
-html += `
+}).join('')}
   </tbody>
 </table>
 
-<!-- BLOOM'S LEVEL -->
-<h1>BLOOM'S LEVEL OF COURSE OUTCOMES</h1>
+<!-- BLOOM'S LEVEL OF COURSE OUTCOMES -->
+<h1>Bloom's Level Mapping of Course Outcomes</h1>
+<p class="note">The following table shows the cognitive level targeted for each course outcome according to Bloom's Taxonomy.</p>
 <table>
   <thead>
     <tr>
-      <th class="center">CO#</th>
-      <th class="center">Remember (L1)</th>
-      <th class="center">Understand (L2)</th>
-      <th class="center">Apply (L3)</th>
-      <th class="center">Analyze (L4)</th>
-      <th class="center">Evaluate (L5)</th>
-      <th class="center">Create (L6)</th>
+      <th class="center" style="width: 10%;">CO#</th>
+      <th class="center" style="width: 12%;">L1</th>
+      <th class="center" style="width: 12%;">L2</th>
+      <th class="center" style="width: 12%;">L3</th>
+      <th class="center" style="width: 12%;">L4</th>
+      <th class="center" style="width: 12%;">L5</th>
+      <th class="center" style="width: 12%;">L6</th>
     </tr>
   </thead>
-  <tbody>`;
-
-cos.forEach((co, i) => {
-  const detectedLevel = dB(co);
+  <tbody>
+${cos.map((co, i) => {
+  const bloomLevel = getBloomsLevelForCO(co);
   let row = `<tr><td class="center"><strong>CO${i+1}</strong></td>`;
   for (let lv = 1; lv <= 6; lv++) {
-    row += `<td class="center">${lv === detectedLevel ? '✓' : ''}</td>`;
+    row += `<td class="center">${lv === bloomLevel ? '✓' : '-'}</td>`;
   }
   row += `</tr>`;
-  html += row;
-});
-
-html += `
+  return row;
+}).join('')}
   </tbody>
 </table>
 
 <!-- CO-PO ARTICULATION MATRIX -->
 <div class="page-break"></div>
-<h1>COURSE ARTICULATION MATRIX</h1>
-<p class="note"><strong>Note:</strong> 1=Low, 2=Medium, 3=High</p>
+<h1>CO-PO Articulation Matrix</h1>
+<p class="note"><strong>Legend:</strong> 1 = Low Correlation, 2 = Medium Correlation, 3 = High Correlation, — = No Correlation</p>
+<p class="note">This matrix demonstrates how each Course Outcome aligns with the Program Outcomes as per AICTE norms.</p>
 <table style="font-size: 9pt;">
   <thead>
     <tr>
-      <th>CO#/POs</th>`;
-
-POS.forEach(po => {
-  html += `<th class="center">${po}</th>`;
-});
-
-html += `</tr>
+      <th style="width: 10%;">CO/PO</th>
+${POS.map(po => `<th class="center">${po}</th>`).join('')}
+    </tr>
   </thead>
-  <tbody>`;
-
-rows.forEach((r, i) => {
-  html += `<tr><td class="center"><strong>CO${i+1}</strong></td>`;
-  POS.forEach(po => {
-    const val = r.pos[po];
-    const display = val > 0 ? val : '—';
-    html += `<td class="center">${display}</td>`;
-  });
-  html += `</tr>`;
-});
-
-html += `
+  <tbody>
+${rows.map((r, i) => `<tr>
+  <td class="center"><strong>CO${i+1}</strong></td>
+${POS.map(po => {
+  const val = r.pos[po];
+  const display = val > 0 ? val : '—';
+  const bgColor = val === 3 ? '#d4edda' : val === 2 ? '#fff3cd' : val === 1 ? '#ffe5e5' : 'white';
+  return `<td class="center" style="background-color: ${bgColor};">${display}</td>`;
+}).join('')}
+</tr>`).join('')}
   </tbody>
 </table>
 
 <!-- COURSE CONTENT -->
 <div class="page-break"></div>
-<h1>COURSE CONTENT</h1>`;
-
-if (S.generatedSyllabus && S.generatedSyllabus.length > 0) {
-  S.generatedSyllabus.forEach((unit, i) => {
-    html += `<h2>UNIT ${i+1}${unit.title ? ': ' + unit.title : ''}</h2>`;
-    if (unit.topics) {
-      let topicsText = '';
-      if (Array.isArray(unit.topics)) {
-        topicsText = unit.topics.join(', ');
-      } else if (typeof unit.topics === 'string') {
-        topicsText = unit.topics;
-      } else if (typeof unit.topics === 'object') {
-        topicsText = JSON.stringify(unit.topics);
+<h1>Course Content</h1>
+<p>The course content is organized into units as follows:</p>
+${(() => {
+  const syllabus = S.mode === 'A' ? (S.existingUnits || []) : (S.generatedSyllabus || []);
+  let content = '';
+  if (syllabus && syllabus.length > 0) {
+    syllabus.forEach((unit, i) => {
+      const unitTitle = (unit.moduleName || unit.title || `Unit ${i+1}`).toUpperCase();
+      content += `<h2>UNIT ${i+1}: ${unitTitle}</h2>`;
+      if (unit.topics && unit.topics.length > 0) {
+        let topicsText = '';
+        if (Array.isArray(unit.topics)) {
+          topicsText = unit.topics.filter(t => t && typeof t === 'string').join('; ');
+        } else if (typeof unit.topics === 'string') {
+          topicsText = unit.topics;
+        }
+        if (topicsText) {
+          content += `<p><strong>Topics Covered:</strong> ${topicsText}</p>`;
+        }
+      } else {
+        content += `<p><strong>Topics Covered:</strong> Core concepts and applications related to ${unit.moduleName || 'this unit'}.</p>`;
       }
-      if (topicsText) {
-        html += `<p>${topicsText}</p>`;
-      }
-    }
-  });
-} else {
-  html += `<p>Syllabus to be generated based on course outcomes.</p>`;
-}
-
-html += `
+      content += `<p><strong>Learning Hours:</strong> 10-12 hours of instruction.</p>`;
+    });
+  } else {
+    content += `<h2>UNIT 1: Core Concepts</h2><p>Fundamental principles and foundational knowledge.</p>`;
+    content += `<h2>UNIT 2: Intermediate Topics</h2><p>Building on core concepts with deeper analysis.</p>`;
+    content += `<h2>UNIT 3: Advanced Applications</h2><p>Practical applications and case studies.</p>`;
+    content += `<h2>UNIT 4: Integration and Synthesis</h2><p>Combining knowledge for comprehensive understanding.</p>`;
+  }
+  return content;
+})()}
 
 <!-- TEXTBOOKS & REFERENCES -->
 <div class="page-break"></div>
-<h1>TEXTBOOKS & REFERENCES</h1>`;
+<h1>Textbooks and References</h1>
 
-if (S_textbookAuthors && S_textbookAuthors.length > 0) {
-  html += `<h2>Prescribed Textbooks</h2><ol>`;
-  S_textbookAuthors.slice(0, 5).forEach(author => {
-    html += `<li>${author}</li>`;
-  });
-  html += `</ol>`;
-}
+${(() => {
+  const authorsData = (S.authors && Array.isArray(S.authors)) ? S.authors : [];
+  let html = '';
+  
+  if (authorsData.length > 0) {
+    html += '<h2>Prescribed Textbooks</h2>';
+    html += '<p>The following textbooks are recommended for this course:</p><ol>';
+    authorsData.slice(0, 8).forEach((author, idx) => {
+      html += `<li><strong>${author}</strong> - Recommended reference for course topics</li>`;
+    });
+    html += '</ol>';
+  } else {
+    html += '<h2>Prescribed Textbooks</h2>';
+    html += '<p>Instructors should select appropriate textbooks that cover the course objectives and content.</p>';
+  }
+  
+  return html;
+})()}
 
-html += `
 <h2>Reference Books</h2>
-<ol>
-  <li>Reference material as per course requirements</li>
-</ol>
-
-<h2>Online Resources</h2>
 <ul>
-  <li>NPTEL / SWAYAM courses related to course topics</li>
-  <li>IEEE and other academic journals</li>
+  <li>Recent publications in the subject area</li>
+  <li>Industry-standard reference materials</li>
+  <li>Case studies and technical papers</li>
+</ul>
+
+<h2>Online Learning Resources</h2>
+<ul>
+  <li>NPTEL Online Courses (https://nptel.ac.in)</li>
+  <li>SWAYAM Platform Courses (https://swayam.gov.in)</li>
+  <li>IEEE Xplore Digital Library</li>
+  <li>ACM Digital Library and technical journals</li>
+  <li>GitHub repositories and open-source projects</li>
+  <li>YouTube educational channels and tutorials</li>
+</ul>
+
+<h2>Assessment and Evaluation</h2>
+<p><strong>Continuous Internal Evaluation (CIE):</strong> 50% of total marks</p>
+<ul>
+  <li>Class tests and quizzes: 20%</li>
+  <li>Assignments and projects: 20%</li>
+  <li>Class participation and attendance: 10%</li>
+</ul>
+<p><strong>Semester End Examination (SEE):</strong> 50% of total marks</p>
+<ul>
+  <li>Written examination of 3-hour duration</li>
+  <li>Covers all course outcomes and units</li>
 </ul>
 
 </body>
@@ -794,23 +1366,205 @@ html += `
   
   console.log('✅ Document downloaded:', link.download);
 }
-function show(id){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));el(id).classList.add('active');}
+function show(id){
+  document.querySelectorAll('.view').forEach(v=>{
+    v.classList.remove('active');
+    v.style.display = 'none';
+  });
+  const target = el(id);
+  if (target) {
+    target.classList.add('active');
+    target.style.display = 'block';
+    const c = window.getComputedStyle(target);
+    console.log(`   🔦 show('${id}'): display=${c.display}, offsetWidth=${target.offsetWidth}, offsetHeight=${target.offsetHeight}`);
+  }
+}
 function el(id){return document.getElementById(id);}
+
+function initApp(){
+  if (el('view-landing')) show('view-landing');
+  if (el('view-app')) el('view-app').style.display='none';
+  if (el('view-select')) el('view-select').style.display='none';
+  if (el('wizard-shell')) el('wizard-shell').style.display='none';
+  if (el('view-preview')) el('view-preview').style.display='none';
+  if (el('view-bos')) el('view-bos').style.display='none';
+}
+document.addEventListener('DOMContentLoaded', initApp);
 
 // ════════════════════════════════════════
 // MODE SELECT
 // ════════════════════════════════════════
-function selectMode(m){S.mode=m;document.querySelectorAll('.mode-card').forEach(c=>c.classList.remove('selected'));el('mc-'+m).classList.add('selected');el('mode-next-btn').style.display='inline-flex';el('app-mode-label').innerHTML=m==='A'?'<span class="mode-badge mode-a">Mode A — Course Updation</span>':'<span class="mode-badge mode-b">Mode B — New Course</span>';}
-function startWizard(){if(!S.mode)return;el('view-select').style.display='none';el('wizard-shell').style.display='block';initWizard();S.mode==='A'?showStep(3):showStep(1);}
+function selectMode(m){
+  S.mode=m;
+  document.querySelectorAll('.mode-card').forEach(c=>c.classList.remove('selected'));
+  el('mc-'+m).classList.add('selected');
+  el('mode-next-btn').style.display='inline-flex';
+  el('app-mode-label').innerHTML=m==='A'?'<span class="mode-badge mode-a">Mode A — Course Updation</span>':'<span class="mode-badge mode-b">Mode B — New Course</span>';
+}
+function startWizard(){
+  console.log('🎯 startWizard() called, Mode:', S.mode);
+  if(!S.mode) {
+    console.error('❌ No mode selected!');
+    return;
+  }
+  
+  console.log('📱 Showing view-app');
+  show('view-app');
+  const va = el('view-app');
+  const vac = window.getComputedStyle(va);
+  console.log(`  view-app: display=${vac.display}, offsetWidth=${va.offsetWidth}, offsetHeight=${va.offsetHeight}`);
+  
+  console.log('🙈 Hiding view-select');
+  if (el('view-select')) el('view-select').style.display='none';
+  
+  console.log('🔓 Showing wizard-shell');
+  const ws = el('wizard-shell');
+  if (ws) {
+    ws.style.display='block';
+    const wsc = window.getComputedStyle(ws);
+    console.log(`  wizard-shell: display=${wsc.display}, width=${wsc.width}, offsetWidth=${ws.offsetWidth}, height=${wsc.height}, offsetHeight=${ws.offsetHeight}`);
+  }
+  
+  console.log('🙈 Hiding view-preview');
+  if (el('view-preview')) el('view-preview').style.display='none';
+  
+  console.log('🙈 Hiding view-bos');
+  if (el('view-bos')) el('view-bos').style.display='none';
+  
+  console.log('🔄 Calling initWizard()');
+  initWizard();
+  
+  if (S.mode==='A') {
+    console.log('👉 Mode A detected - calling showStep(3)');
+    showStep(3);
+  } else {
+    console.log('👉 Mode B detected - calling showStep(1)');
+    showStep(1);
+  }
+  console.log('✅ startWizard() complete');
+}
 
 // ════════════════════════════════════════
 // WIZARD
 // ════════════════════════════════════════
-function initWizard(){renderProg();if(S.mode==='A'){const tbList=el('textbook-list');const refList=el('ref-list');if(tbList)tbList.innerHTML='';if(refList)refList.innerHTML='';S.tbCount=0;S.rbCount=0;if(tbList)addBook('textbook-list','tb');if(refList)addBook('ref-list','rb');}else{el('co-step-title').textContent='New Course Outcomes';el('co-step-sub').textContent='Write each CO as an action-oriented statement. CAMP will auto-detect the Bloom\'s level and generate the full syllabus.';el('co-next-btn').textContent='Next: Textbooks →';el('books-banner').style.display='flex';el('co-list').innerHTML='';S.coCount=0;for(let i=0;i<3;i++)addCO();}S_textbookAuthors=[];const tbFile=el('textbooks-file');if(tbFile)tbFile.value='';const tbResult=el('textbooks-result');if(tbResult)tbResult.style.display='none';}
+function initWizard(){
+  renderProg();
+  // Reset common wizard state between modes
+  S.coData = [];
+  S.generatedCOs = [];
+  S.existingUnits = [];
+  S.modStats = { added: 0, removed: 0, modified: 0, same: 0, modPct: 0 };
+  S.textbooks = [];
+  S.authors = [];
+  S.coCount = 0;
+  S.tbCount = 0;
+  S.rbCount = 0;
+
+  if (el('books-banner')) el('books-banner').style.display = 'none';
+  if (el('co-list')) el('co-list').innerHTML = '';
+  if (el('textbooks-result')) el('textbooks-result').style.display = 'none';
+  if (el('pdf-input-modeA')) el('pdf-input-modeA').value = '';
+  if (el('analysis-results')) el('analysis-results').style.display = 'none';
+  if (el('upload-zone-modeA')) el('upload-zone-modeA').style.display = 'block';
+  if (el('pdf-upload-result')) el('pdf-upload-result').style.display = 'none';
+  if (el('step3-next-btn')) {
+    el('step3-next-btn').disabled = true;
+    el('step3-next-btn').style.opacity = '0.5';
+    el('step3-next-btn').style.cursor = 'not-allowed';
+  }
+
+  if (S.mode === 'A'){
+    // ✅ Mode A: Initialize PDF upload step
+    console.log('🎯 Initializing Mode A - PDF upload mode');
+    // Hide step-1 (Course Info) and step-2 (New COs) as they are Mode B only
+    const step1 = el('step-1'); if (step1) { step1.classList.remove('active'); step1.style.display = 'none'; }
+    const step2 = el('step-2'); if (step2) { step2.classList.remove('active'); step2.style.display = 'none'; }
+    // Ensure step-3 (PDF upload) is visible and configured
+    const step3 = el('step-3'); if (step3) { step3.classList.remove('active'); step3.style.display = 'none'; }
+    console.log('✅ Mode A initialization complete');
+  } else {
+    // Mode B: Initialize Course Outcome input
+    el('co-step-title').textContent = 'New Course Outcomes';
+    el('co-step-sub').textContent = 'Write each CO as an action-oriented statement. CAMP will auto-detect the Bloom\'s level and generate the full syllabus.';
+    el('co-next-btn').textContent = 'Next: Textbooks →';
+    el('books-banner').style.display = 'flex';
+    S.coCount = 0;
+    for (let i = 0; i < 3; i++) addCO();
+  }
+
+  const tbFile = el('textbooks-file'); if (tbFile) tbFile.value = '';
+  const tbResult = el('textbooks-result'); if (tbResult) tbResult.style.display = 'none';
+}
 function renderProg(){const steps=S.mode==='A'?[{n:1,l:'Upload Syllabus',d:'PDF analysis'},{n:2,l:'Textbooks',d:'References'}]:[{n:1,l:'Course Info',d:'Basic details'},{n:2,l:'New COs',d:'CO statements'},{n:3,l:'Textbooks',d:'References'}];el('step-progress').innerHTML=steps.map((s,i)=>`<div class="step-item"><div class="step-circle" id="sc-${s.n}">${s.n}</div><div class="step-info"><div class="slbl">${s.l}</div><div class="sdesc">${s.d}</div></div></div>${i<steps.length-1?`<div class="step-line" id="sl-${s.n}"></div>`:''}`).join('');}
 function updateProg(a){const t=S.mode==='A'?2:3;let displayStep=a;if(S.mode==='A'){if(a===3)displayStep=1;else if(a===4||a==='step-books')displayStep=2;}for(let i=1;i<=t;i++){const sc=el('sc-'+i),sl=el('sl-'+i);if(!sc)continue;if(i<displayStep){sc.className='step-circle done';sc.textContent='✓';}else if(i===displayStep){sc.className='step-circle active';sc.textContent=i;}else{sc.className='step-circle';sc.textContent=i;}if(sl)sl.className='step-line'+(i<displayStep?' done':'');}if(S.mode==='A'&&el('step3-back-btn')){el('step3-back-btn').style.display=a===3?'none':'inline-flex';}};
-function showStep(n){S.step=n;document.querySelectorAll('.form-panel').forEach(p=>p.classList.remove('active'));el('step-'+n).classList.add('active');updateProg(n);scroll(0,0);}
-function showStepById(id){document.querySelectorAll('.form-panel').forEach(p=>p.classList.remove('active'));el(id).classList.add('active');let n;if(id==='step-books'){n=S.mode==='A'?4:3;}else{n=parseInt(id.replace('step-',''));}updateProg(n);scroll(0,0);}
+function showStep(n){
+  S.step=n;
+  console.log(`🔍 showStep(${n}) called for Mode ${S.mode}`);
+  document.querySelectorAll('.form-panel').forEach(p=>{
+    p.classList.remove('active');
+    p.style.display = 'none';
+    console.log(`  Removed active from ${p.id}, forced display:none`);
+  });
+  const target = el('step-'+n);
+  if (target) {
+    target.classList.add('active');
+    target.style.display = 'block';
+    console.log(`  ✅ Added active to step-${n}, forced display:block`);
+    
+    const computed = window.getComputedStyle(target);
+    console.log(`  🎯 step-${n} CSS:`);
+    console.log(`     display: ${computed.display}, visibility: ${computed.visibility}, opacity: ${computed.opacity}`);
+    console.log(`     width: ${computed.width}, height: ${computed.height}`);
+    console.log(`     offsetWidth x offsetHeight: ${target.offsetWidth} x ${target.offsetHeight}`);
+    console.log(`     scrollWidth x scrollHeight: ${target.scrollWidth} x ${target.scrollHeight}`);
+    console.log(`     position: ${computed.position}, overflow: ${computed.overflow}`);
+    console.log(`     innerHTML.length: ${target.innerHTML.length} chars`);
+    
+    // CHECK CHILDREN
+    console.log(`  🔎 Checking children of step-${n}:`);
+    const children = target.children;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const cc = window.getComputedStyle(child);
+      console.log(`     child[${i}] (${child.className}): display=${cc.display}, offsetWidth=${child.offsetWidth}, offsetHeight=${child.offsetHeight}`);
+      
+      // If it's a form-card, check ITS children
+      if (child.classList.contains('form-card')) {
+        console.log(`       ↳ form-card found, checking its children:`);
+        for (let j = 0; j < child.children.length; j++) {
+          const grandchild = child.children[j];
+          const gcc = window.getComputedStyle(grandchild);
+          console.log(`         [${j}] display=${gcc.display}, offsetWidth=${grandchild.offsetWidth}`);
+        }
+      }
+    }
+    
+    const parent = target.parentElement;
+    if (parent && parent.id === 'wizard-shell') {
+      const pc = window.getComputedStyle(parent);
+      console.log(`  👨‍👩‍👧 wizard-shell parent: display=${pc.display}, width=${pc.width}, offsetWidth=${parent.offsetWidth}, overflow=${pc.overflow}`);
+    }
+  } else {
+    console.error(`  ❌ Element step-${n} not found!`);
+  }
+  updateProg(n);
+  scroll(0,0);
+}
+function showStepById(id){
+  document.querySelectorAll('.form-panel').forEach(p=>{
+    p.classList.remove('active');
+    p.style.display='none';
+  });
+  const target = el(id);
+  if (target) {
+    target.classList.add('active');
+    target.style.display='block';
+  }
+  let n;
+  if(id==='step-books'){n=S.mode==='A'?4:3;}else{n=parseInt(id.replace('step-',''));}
+  updateProg(n);
+  scroll(0,0);
+}
 function nextStep(f){if(S.mode==='A'){if(f===3)showStepById('step-books');else showStep(f+1);}else{if(f===2){showStepById('step-books');}else showStep(f+1);}}
 function prevStep(f){if(S.mode==='A'){if(f===3)return;showStep(f-1);}else{if(f===1)return;showStep(f-1);}}
 function addCO(){S.coCount++;const n=S.coCount,row=document.createElement('div');row.className='co-row';row.id='co-row-'+n;row.innerHTML=`<div class="co-badge">CO${n}</div><input type="text" id="co-${n}" placeholder="e.g. Write programs to compute mathematical functions using loops..."/><button class="co-remove" onclick="removeCO(${n})">×</button>`;el('co-list').appendChild(row);}
@@ -920,56 +1674,53 @@ async function generatePreview(){
   let cos = [];
   
   // ═══════════════════════════════════════════════════════════════════════
-  // MODE A: Extract COs from PDF analysis data
+  // MODE A: Generate COs from revisedStructure + keywords from topics
   // ═══════════════════════════════════════════════════════════════════════
   if (S.mode === 'A') {
-    // ✅ VERIFY PDF analysis data exists
-    if (!S.analysisData || !S.analysisData.addPOs || S.analysisData.addPOs.length === 0) {
+    console.log('📦 Mode A - generating from analysisData:', S.analysisData);
+    
+    if (!S.analysisData?.revisedStructure?.length) {
       alert('❌ No PDF analysis data found. Please upload and analyze a PDF first.');
       return;
     }
-    
-    const title = el('f-title')?.value?.trim();
-    const code = el('f-code')?.value?.trim();
-    
-    if (!title || !code) {
-      alert('❌ Please fill in Course Title and Course Code');
+
+    S.existingUnits = S.analysisData.revisedStructure.map((unit, idx) => {
+      const moduleName = typeof unit === 'object'
+        ? (unit.moduleName || unit.title || unit.name || `Unit ${idx + 1}`)
+        : (typeof unit === 'string' ? unit.replace(/^Unit\s+\d+:\s*/i, '').trim() : `Unit ${idx + 1}`);
+      const topics = Array.isArray(unit.topics)
+        ? unit.topics
+        : (unit.topics ? unit.topics.toString().split(/[;,\n]+/).map(t => t.trim()).filter(Boolean) : []);
+      return { moduleName, topics };
+    });
+
+    S.coData = buildModeACoData();
+    S.cos = S.coData.map(item => item.CO);
+    S.coPoMatrix = generateMatrix();
+
+    S.courseTitle = S.courseTitle || 'Unknown Course';
+    S.courseCode = S.courseCode || 'XXXXX';
+    S.courseSem = S.courseSem || el('f-sem')?.value || '—';
+    S.courseBranch = S.courseBranch || el('f-branch')?.value || '—';
+
+    if (!S.coData.length) {
+      alert('❌ Unable to generate Course Outcomes from the PDF structure. Please verify the uploaded syllabus.');
       return;
     }
+
+    cos = S.cos;
     
-    // ✅ Extract COs from addPOs
-    S.analysisData.addPOs.forEach((po, idx) => {
-      const coText = typeof po === 'string' ? po : (po.co || po.CO || `CO${idx+1}`);
-      cos.push(coText);
-    });
-    
-    console.log(`✅ Mode A: Extracted ${cos.length} COs from PDF analysis`);
-    
-    // Store metadata
-    S.courseTitle = title;
-    S.courseCode = code;
-    S.courseSem = el('f-sem')?.value || '—';
-    S.courseBranch = el('f-branch')?.value || '—';
-    
-    // ✅ Set CO data from addPOs with keywords (backend provides this)
-    S.coData = S.analysisData.addPOs.map((po, idx) => ({
-      CO: typeof po === 'string' ? po : (po.co || po.CO || `CO${idx+1}`),
-      keywords: po.keywords || []
-    }));
-    
-    // ✅ Set syllabus from revisedStructure
-    S.existingUnits = S.analysisData.revisedStructure || [];
-    
-    console.log('✅ Mode A State Set:', {
-      cos: cos.length,
-      coData: S.coData.length,
+    console.log('✅ MODE A GENERATION COMPLETE:', {
+      courseCode: S.courseCode,
+      courseName: S.courseTitle,
+      coCount: cos.length,
+      allKeywordsPopulated: S.coData.every(cd => cd.keywords && cd.keywords.length > 0),
       units: S.existingUnits.length
     });
-    
-  } 
-  // ═══════════════════════════════════════════════════════════════════════
+  }
+  // ═════════════════════════════════════════════════════════════════════════
   // MODE B: Extract COs from form inputs and fetch mapping from backend
-  // ═══════════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════════════
   else {
     for (let i = 1; i <= S.coCount; i++) {
       const e = el('co-' + i);
@@ -1049,9 +1800,10 @@ async function generatePreview(){
   // RENDER PREVIEW
   // ═══════════════════════════════════════════════════════════════════════
   
-  // Update header
-  el('preview-course-title').textContent = S.courseTitle;
-  el('preview-course-sub').textContent = `${S.courseCode}  ·  ${S.courseBranch}  ·  ${S.courseSem}`;
+  // Update header with backend data
+  el('preview-course-title').textContent = S.courseTitle || 'Course Title';
+  el('preview-course-sub').textContent = `${S.courseCode || '—'}  ·  ${S.courseBranch || '—'}  ·  ${S.courseSem || '—'}`;
+  console.log('🎯 Header Updated:', { title: S.courseTitle, code: S.courseCode });
   
   // Update CO list
   el('preview-co-list').innerHTML = cos.map((co, i) => `
@@ -1063,7 +1815,7 @@ async function generatePreview(){
   
   // Update Bloom's levels - show table with all 6 levels and checkmarks
   el('blooms-tbody').innerHTML = cos.map((co, i) => {
-    const detectedLevel = dB(co);
+    const detectedLevel = getBloomsLevelForCO(co);
     const levelCells = [1, 2, 3, 4, 5, 6].map(lv => 
       `<td style="text-align:center;border:1px solid #E5E7EB;padding:10px">` +
       (lv === detectedLevel ? '✓' : '') +
@@ -1077,6 +1829,8 @@ async function generatePreview(){
   
   // Generate and display CO-PO matrix
   const rows = genCOPO(cos, S.coData);
+  console.log('🔗 CO-PO Mapping Result:', rows);
+  
   const cc = v => v === 3 ? 'c3' : v === 2 ? 'c2' : v === 1 ? 'c1' : 'c0';
   const ct = v => v > 0 ? v : '—';
   
@@ -1091,7 +1845,10 @@ async function generatePreview(){
       ${rows.map(r => `
         <tr>
           <td class="co-name">${r.co}</td>
-          ${POS.map(p => `<td class="${cc(r.pos[p])}" style="cursor:pointer;user-select:none" title="Click to see keyword breakdown">${ct(r.pos[p])}</td>`).join('')}
+          ${POS.map(p => {
+            const val = r.pos[p];
+            return `<td class="${cc(val)}" style="cursor:pointer;user-select:none" title="Click to see keyword breakdown">${ct(val)}</td>`;
+          }).join('')}
         </tr>
       `).join('')}
     </tbody>
@@ -1229,208 +1986,318 @@ function handlePdfDropModeA(e) {
 }
 
 async function processPdfModeA(file) {
-  if (!file.name.toLowerCase().endsWith('.pdf')) {
+  if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
     alert('Please upload a PDF file.');
     return;
   }
-  
+
   if (file.size > 20 * 1024 * 1024) {
     alert('File size exceeds 20MB limit.');
     return;
   }
 
-  // Show upload progress
   el('upload-zone-modeA').style.display = 'none';
   el('pdf-upload-result').style.display = 'block';
   el('pdf-filename').textContent = file.name;
-  el('pdf-status').textContent = 'Analyzing PDF... Please wait';
+  el('pdf-status').textContent = 'Uploading and analyzing PDF...';
   el('analysis-results').style.display = 'none';
   el('step3-next-btn').disabled = true;
   el('step3-next-btn').style.opacity = '0.5';
 
   try {
+    console.log('📤 Uploading PDF to backend:', file.name);
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(`${API_BASE}/course-modify/upload`, {
-      method: 'POST',
-      body: formData
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errText}`);
+    const uploadResponse = await fetch(`${API_BASE}/course-modify/upload`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (!uploadResponse.ok) {
+      const errText = await uploadResponse.text();
+      throw new Error(`Upload failed (${uploadResponse.status}): ${errText}`);
     }
 
-    const data = await response.json();
-    
-    // Store response as-is
-    S.pdfAnalysis = data;
-    
-    el('pdf-status').textContent = '✓ Analysis complete';
-    displayPdfAnalysis(data);
+    const analysisData = await uploadResponse.json();
+    console.log('✅ Backend analysis received:', analysisData);
+
+    const backendText = (analysisData.rawText || analysisData.text || analysisData.fullText || '').toString();
+    const extractedMeta = extractCourseMetaFromText(backendText);
+    const fallbackTitle = extractTitleFromFileName(file.name);
+
+    S.courseTitle = extractedMeta.title || analysisData.courseName || fallbackTitle || 'Untitled Course';
+    S.courseCode = extractedMeta.code || analysisData.courseCode || '';
+    if (!S.courseCode) {
+      const filenameCode = (file.name.match(/[A-Z]{2,}-?\d{3,}/) || [])[0];
+      S.courseCode = filenameCode || `AUTO-${Date.now().toString().slice(-6)}`;
+    }
+    S.courseBranch = analysisData.courseBranch || S.courseBranch || 'CSE';
+    S.courseSem = analysisData.courseSemester || S.courseSem || 'IV Semester';
+
+    const units = (analysisData.revisedStructure || []).map((unit, i) => {
+      const moduleName = unit.moduleName || unit.title || unit.name || `Unit ${i + 1}`;
+      const topics = Array.isArray(unit.topics)
+        ? unit.topics
+        : (unit.topics ? unit.topics.toString().split(/[;\n,]+/).map(t => t.trim()).filter(Boolean) : []);
+      return { moduleName, topics };
+    });
+
+    S.analysisData = analysisData;
+    S.existingUnits = units;
+    S.coData = [];
+    S.coPoMatrix = [];
+    S.cos = [];
+    S.keywordsByCO = {};
+
+    el('f-code').value = S.courseCode;
+    el('f-title').value = S.courseTitle;
+    el('f-branch').value = S.courseBranch;
+    el('f-sem').value = S.courseSem;
+
+    el('pdf-status').textContent = '✅ PDF analysis complete. Course metadata and revised structure stored.';
+    el('pdf-status').style.color = '#059669';
+    el('analysis-results').style.display = 'block';
+    displayModeAAnalysisResults(analysisData, units);
 
     el('step3-next-btn').disabled = false;
     el('step3-next-btn').style.opacity = '1';
     el('step3-next-btn').style.cursor = 'pointer';
 
-  } catch (e) {
-    console.error('PDF upload error:', e);
-    el('pdf-status').textContent = `Error: ${e.message}`;
+    console.log('✅ Mode A upload complete:', {
+      courseTitle: S.courseTitle,
+      courseCode: S.courseCode,
+      unitsCount: units.length,
+      metadataSource: { extracted: extractedMeta, backendCode: analysisData.courseCode, backendName: analysisData.courseName }
+    });
+  } catch (error) {
+    console.error('❌ PDF processing error:', error);
+    if (error.name === 'AbortError') {
+      el('pdf-status').textContent = '❌ Error: PDF upload timed out. Please try again.';
+    } else {
+      el('pdf-status').textContent = `❌ Error: ${error.message}`;
+    }
     el('pdf-status').style.color = '#DC2626';
-    alert('Error analyzing PDF: ' + e.message);
-    clearPdfUploadModeA();
+    setTimeout(() => {
+      clearPdfUploadModeA();
+    }, 4000);
   }
 }
 
-function displayPdfAnalysis(data) {
-  if (!data) return;
-  
-  el('analysis-results').style.display = 'block';
+// Generate COs from revisedStructure units with proper Bloom verb mapping
+function generateCOsFromUnits(units) {
+  const cos = [];
+  const verbs = [
+    { verb: 'Understand', level: 2 },
+    { verb: 'Apply', level: 3 },
+    { verb: 'Analyze', level: 4 },
+    { verb: 'Evaluate', level: 5 }
+  ];
 
-  // ════════════════════════════════════════
-  // 1. COURSE OUTCOMES (addPOs)
-  // ════════════════════════════════════════
-  if (data.addPOs && data.addPOs.length > 0) {
-    el('section-extracted-cos').style.display = 'block';
-    
-    const cosHtml = data.addPOs.map((item, idx) => {
-      const coTitle = item.co || `Course Outcome ${idx + 1}`;
-      
-      let keywordsHtml = '';
-      if (item.keywords && Array.isArray(item.keywords)) {
-        keywordsHtml = item.keywords.map((kw, i) => {
-          let reasonsHtml = '';
-          if (kw.reasons && Array.isArray(kw.reasons)) {
-            reasonsHtml = kw.reasons.map((r, j) => 
-              `<div style="padding:6px 8px;background:#E8F5E9;margin:4px 0;border-left:3px solid #4CAF50;font-size:11px">
-                <strong>${r.Po || 'PO?'}:</strong> ${r.reason || 'N/A'}
-              </div>`
-            ).join('');
-          }
-          
-          return `<div style="margin-bottom:8px;padding:10px;background:#F5F5F5;border-radius:4px">
-            <div style="font-weight:600;color:#2E5C8A;margin-bottom:4px">${kw.keywords || 'Keyword'}</div>
-            ${reasonsHtml}
-          </div>`;
-        }).join('');
-      }
-      
-      return `<div style="padding:14px;background:#F0F4F8;border-left:4px solid #2E5C8A;border-radius:6px;margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-          <span style="background:#2E5C8A;color:white;padding:4px 8px;border-radius:3px;font-weight:bold;font-size:12px">CO${idx + 1}</span>
-          <div style="font-size:13px;color:#1B3A6B;font-weight:600">${coTitle}</div>
-        </div>
-        ${keywordsHtml ? `<div style="margin-top:10px;border-top:1px solid #DDD;padding-top:10px">
-          <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:6px">PO Mapping:</div>
-          ${keywordsHtml}
-        </div>` : ''}
-      </div>`;
-    }).join('');
-    
-    el('extracted-cos-list').innerHTML = cosHtml;
-  } else {
-    el('section-extracted-cos').style.display = 'none';
-  }
-
-  // ════════════════════════════════════════
-  // 2. BURDEN TOPICS (Red - Remove)
-  // ════════════════════════════════════════
-  if (data.burdenTopics && data.burdenTopics.length > 0) {
-    el('section-outdated').style.display = 'block';
-    
-    const burdenHtml = data.burdenTopics.map(t => {
-      const topicName = typeof t === 'string' ? t : (t.name || t.topic || 'Topic');
-      return `<div style="padding:8px 12px;background:#FFEBEE;border:1px solid #FFCDD2;border-radius:4px;margin-bottom:6px;font-size:12px;color:#C62828">
-        🗑️ ${topicName}
-      </div>`;
-    }).join('');
-    
-    el('outdated-topics-list').innerHTML = burdenHtml;
-  } else {
-    el('section-outdated').style.display = 'none';
-  }
-
-  // ════════════════════════════════════════
-  // 3. UNNECESSARY TOPICS (Yellow - Optional)
-  // ════════════════════════════════════════
-  if (data.unnecessaryTopics && data.unnecessaryTopics.length > 0) {
-    // Append to burden section
-    const unnecessaryHtml = data.unnecessaryTopics.map(t => {
-      const topicName = typeof t === 'string' ? t : (t.name || t.topic || 'Topic');
-      return `<div style="padding:8px 12px;background:#FFF9C4;border:1px solid #FDD835;border-radius:4px;margin-bottom:6px;font-size:12px;color:#F57F17">
-        ⚠️ ${topicName}
-      </div>`;
-    }).join('');
-    
-    if (el('section-outdated').style.display !== 'none') {
-      const header = '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #DDD;font-weight:600;color:#666;margin-bottom:8px;font-size:11px">OPTIONAL TO REMOVE:</div>';
-      el('outdated-topics-list').innerHTML += header + unnecessaryHtml;
+  units.forEach((unit, unitIndex) => {
+    const moduleName = unit.moduleName || unit.title || unit.name || `Unit ${unitIndex + 1}`;
+    let topics = [];
+    if (Array.isArray(unit.topics)) {
+      topics = unit.topics;
+    } else if (typeof unit.topics === 'string') {
+      topics = unit.topics.split(/[;,\n]+/).map(t => t.trim()).filter(Boolean);
     }
-  }
 
-  // ════════════════════════════════════════
-  // 4. IMPORTANT TOPICS (Green - Retain)
-  // ════════════════════════════════════════
-  if (data.importantTopics && data.importantTopics.length > 0) {
-    el('section-important').style.display = 'block';
-    
-    const importantHtml = data.importantTopics.map(t => {
-      const topicName = typeof t === 'string' ? t : (t.name || t.topic || 'Topic');
-      return `<div style="padding:8px 12px;background:#E8F5E9;border:1px solid #C8E6C9;border-radius:4px;margin-bottom:6px;font-size:12px;color:#2E7D32">
-        ✓ ${topicName}
-      </div>`;
-    }).join('');
-    
-    el('important-topics-list').innerHTML = importantHtml;
-  } else {
-    el('section-important').style.display = 'none';
-  }
+    const keyPhrase = topics.length ? topics.slice(0, 4).join(', ') : moduleName;
+    const baseKeywords = [...new Set([
+      moduleName,
+      ...topics.slice(0, 4)
+    ].map(k => k.toString().trim().toLowerCase()).filter(Boolean))];
 
-  // ════════════════════════════════════════
-  // 5. IMPROVEMENTS (Blue - Suggestions)
-  // ════════════════════════════════════════
-  if (data.improvements && data.improvements.length > 0) {
-    el('section-improvements').style.display = 'block';
-    
-    const improvementsHtml = data.improvements.map(imp => {
-      const improvementText = typeof imp === 'string' ? imp : (imp.suggestion || imp.improvement || '');
-      return `<div style="padding:12px;background:#E3F2FD;border-left:4px solid #1976D2;border-radius:4px;margin-bottom:8px;font-size:12px;color:#0D47A1;line-height:1.5">
-        • ${improvementText}
-      </div>`;
-    }).join('');
-    
-    el('improvements-list').innerHTML = improvementsHtml;
-  } else {
-    el('section-improvements').style.display = 'none';
-  }
+    verbs.forEach(v => {
+      const coText = `${v.verb} concepts of ${moduleName}`;
+      const generated = generateKeywordsFromText(`${coText} ${keyPhrase}`);
+      const keywordObjects = [...new Set([
+        ...generated.map(k => k.toString().toLowerCase()),
+        ...baseKeywords
+      ])].slice(0, 6).map(k => ({ keyword: k, reasons: [] }));
 
-  // ════════════════════════════════════════
-  // 6. REVISED SYLLABUS STRUCTURE
-  // ════════════════════════════════════════
-  if (data.revisedStructure && data.revisedStructure.length > 0) {
-    el('section-syllabus').style.display = 'block';
-    
-    const syllabusHtml = data.revisedStructure.map((unit, i) => {
-      const moduleName = unit.moduleName || unit.title || `Module ${i + 1}`;
-      const topicsArray = Array.isArray(unit.topics) ? unit.topics : (unit.topics ? [unit.topics] : []);
-      
-      const topicsHtml = topicsArray.map((topic, j) => 
-        `<li style="padding:4px 0;color:#555;font-size:12px">${topic}</li>`
-      ).join('');
-      
-      return `<div style="padding:14px;background:#F9F9F9;border:1px solid #E0E0E0;border-radius:6px;margin-bottom:12px">
-        <div style="font-weight:700;color:#1B3A6B;margin-bottom:8px;font-size:13px">Unit ${i + 1}: ${moduleName}</div>
-        <ul style="margin:0;padding-left:20px;list-style:disc">
-          ${topicsHtml}
-        </ul>
-      </div>`;
-    }).join('');
-    
-    el('syllabus-structure').innerHTML = syllabusHtml;
-  } else {
-    el('section-syllabus').style.display = 'none';
-  }
+      cos.push({ CO: coText, keywords: keywordObjects, bloomLevel: v.level });
+    });
+  });
+
+  return cos;
+}
+
+function buildModeACoData() {
+  if (!S.analysisData?.revisedStructure?.length) return [];
+  const generated = generateCOsFromUnits(S.existingUnits || []);
+  S.coData = generated.map((item, idx) => ({ CO: item.CO, keywords: item.keywords, bloomLevel: item.bloomLevel }));
+  S.cos = S.coData.map(item => item.CO);
+  return S.coData;
+}
+
+// Map CO text to Bloom's level based on action verbs
+function getBloomsLevelForCO(coText) {
+  const text = (coText || '').toLowerCase();
+  const l6 = ['create', 'design', 'develop', 'invent', 'construct', 'assemble', 'devise', 'formulate'];
+  const l5 = ['evaluate', 'critique', 'justify', 'assess', 'appraise', 'judge'];
+  const l4 = ['analyze', 'examine', 'investigate', 'distinguish', 'compare', 'differentiate', 'break down'];
+  const l3 = ['apply', 'implement', 'demonstrate', 'solve', 'use', 'practice', 'execute', 'compute'];
+  const l2 = ['explain', 'describe', 'summarize', 'interpret', 'discuss', 'understand', 'define', 'identify'];
+  
+  if (l6.some(v => text.includes(v))) return 6;
+  if (l5.some(v => text.includes(v))) return 5;
+  if (l4.some(v => text.includes(v))) return 4;
+  if (l3.some(v => text.includes(v))) return 3;
+  if (l2.some(v => text.includes(v))) return 2;
+  return 2; // Default to Understand
+}
+
+function generateKeywordsFromText(text) {
+  const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  const actionVerbs = ['understand', 'analyze', 'design', 'evaluate', 'apply', 'solve', 'create', 'implement', 'develop'];
+  const keywords = [...new Set([...actionVerbs.filter(v => text.toLowerCase().includes(v)), ...words.slice(0, 5)])];
+  return keywords.slice(0, 6);
+}
+
+function computeCoPoMatrixFromCOs(cosOrCoData) {
+  const matrix = {};
+  const poKeys = Object.keys(PO_STATEMENTS);
+  const data = Array.isArray(cosOrCoData) ? cosOrCoData : [];
+
+  data.forEach((item, index) => {
+    const coText = typeof item === 'string' ? item : (item.CO || item.co || '');
+    const keywords = Array.isArray(item.keywords) ? item.keywords : generateKeywordsFromText(coText);
+    const coKey = `CO${index + 1}`;
+    matrix[coKey] = {};
+
+    const cleanKeywords = keywords.map(k => (typeof k === 'string' ? k : k.keyword || '')).filter(Boolean);
+
+    const scored = poKeys.map(po => {
+      const poText = (PO_STATEMENTS[po] || '').toLowerCase();
+      let totalMatches = 0;
+
+      cleanKeywords.forEach(keyword => {
+        const kw = keyword.toLowerCase();
+        if (!kw) return;
+        if (poText.includes(kw)) totalMatches += 1;
+      });
+
+      const rawScore = totalMatches / 3;
+      let level = 0;
+      if (rawScore >= 0.75) level = 3;
+      else if (rawScore >= 0.5) level = 2;
+      else if (rawScore >= 0.25) level = 1;
+      return { po, level, rawScore, totalMatches };
+    });
+
+    const nonZero = scored.filter(item => item.level > 0).sort((a, b) => {
+      if (b.level !== a.level) return b.level - a.level;
+      if (b.rawScore !== a.rawScore) return b.rawScore - a.rawScore;
+      return b.totalMatches - a.totalMatches;
+    });
+
+    const keep = new Set(nonZero.slice(0, 6).map(item => item.po));
+    poKeys.forEach(po => {
+      const found = scored.find(item => item.po === po);
+      matrix[coKey][po] = found && keep.has(po) ? found.level : 0;
+    });
+  });
+
+  S.coPoMatrix = matrix;
+  return matrix;
+}
+
+function displayModeAAnalysisResults(analysisData, units) {
+  const getTopicData = topic => {
+    if (!topic) return { name: '', reason: '', difficulty: '' };
+    if (typeof topic === 'string') return { name: topic, reason: '', difficulty: '' };
+    return {
+      name: topic.name || topic.title || topic.topic || '',
+      reason: topic.reason || topic.notes || '',
+      difficulty: topic.difficulty || topic.level || ''
+    };
+  };
+
+  const renderTopicCards = (items, title, bg, border, emoji) => {
+    if (!items || !items.length) return '';
+    return `
+      <div style="background: ${bg}; border: 1px solid ${border}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+        <div style="font-weight: 700; color: #111827; margin-bottom: 12px; font-size: 14px;">${emoji} ${title} (${items.length})</div>
+        <div style="display: grid; gap: 10px;">
+          ${items.map(item => {
+            const topic = getTopicData(item);
+            return `
+              <div style="padding: 12px; background: white; border-radius: 6px; border: 1px solid #e5e7eb; font-size: 12px; line-height:1.5;">
+                <div style="font-weight: 600;">${topic.name || 'Untitled topic'}</div>
+                ${topic.reason ? `<div style="font-size: 11px; color: #4b5563; margin-top: 4px;">Reason: ${topic.reason}</div>` : ''}
+                ${topic.difficulty ? `<div style="font-size: 11px; color: #6b7280; margin-top: 4px;">Difficulty: ${topic.difficulty}</div>` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  };
+
+  const importantHtml = renderTopicCards(analysisData.importantTopics, 'Important Topics', '#ecfdf5', '#10b981', '✓');
+  const unnecessaryHtml = renderTopicCards(analysisData.unnecessaryTopics, 'Unnecessary Topics', '#fffbeb', '#f59e0b', '⚠️');
+  const burdenHtml = renderTopicCards(analysisData.burdenTopics, 'Burden Topics', '#fef2f2', '#ef4444', '🗑️');
+  const improvementsHtml = (analysisData.improvements && analysisData.improvements.length)
+    ? `
+      <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+        <div style="font-weight: 700; color: #1d4ed8; margin-bottom: 12px; font-size: 14px;">💡 Improvements</div>
+        <ol style="margin-left: 18px; color: #1f2937; font-size: 12px;">
+          ${analysisData.improvements.map(item => `<li style="margin-bottom: 8px;">${typeof item === 'string' ? item : (item.suggestion || item.improvement || item.text || JSON.stringify(item))}</li>`).join('')}
+        </ol>
+      </div>
+    `
+    : '';
+
+  const syllabusHtml = (units && units.length)
+    ? `
+      <div style="background: #f8fafc; border: 1px solid #c7d2fe; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+        <div style="font-weight: 700; color: #4338ca; margin-bottom: 12px; font-size: 14px;">📚 Revised Structure</div>
+        <div style="display: grid; gap: 12px;">
+          ${units.map((unit, index) => `
+            <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; font-size: 12px;">
+              <div style="font-weight: 700; color: #1f2937; margin-bottom: 6px;">Unit ${index + 1}: ${unit.moduleName}</div>
+              <div style="color: #4b5563; font-size: 12px;">${unit.topics && unit.topics.length ? unit.topics.join(', ') : 'No topics available'}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `
+    : '<div style="padding:16px;background:#f8fafc;border:1px solid #d1d5db;border-radius:8px;font-size:12px;color:#334155">No revised structure was returned from the PDF analysis.</div>';
+
+  const headerHtml = `
+    <div style="background: linear-gradient(135deg, #1f2937 0%, #374151 100%); color: white; border-radius: 8px; padding: 18px; margin-bottom: 20px;">
+      <div style="font-size: 16px; font-weight: 700;">📑 PDF Analysis Results</div>
+      <div style="font-size: 12px; margin-top: 8px; opacity: 0.92;">
+        Course: <strong>${S.courseTitle || 'N/A'}</strong> | Code: <strong>${S.courseCode || 'N/A'}</strong> | Units: <strong>${units.length}</strong>
+      </div>
+    </div>
+  `;
+
+  el('analysis-results').innerHTML = `
+    ${headerHtml}
+    ${importantHtml}
+    ${unnecessaryHtml}
+    ${burdenHtml}
+    ${improvementsHtml}
+    ${syllabusHtml}
+    <div style="background:#f3f4f6;border:1px solid #d1d5db;border-radius:8px;padding:16px;">
+      <div style="font-weight:700;color:#111827;margin-bottom:10px;font-size:14px;">ℹ️ Next Step</div>
+      <div style="font-size:12px;color:#374151;line-height:1.6;">Click the next button to generate the proposal. Course Outcomes, Bloom levels, and CO-PO mapping will be created from the revised structure only.</div>
+    </div>
+  `;
+}
+
+function displayPdfAnalysis(data) {
+  // Legacy function - now handled by displayModeAAnalysisResults
+  if (!data) return;
+  el('analysis-results').style.display = 'block';
 }
 
 
@@ -1449,68 +2316,19 @@ function clearPdfUploadModeA() {
 function buildBOSDashboard(){
   const cos=S.cos.length?S.cos:['Write simple computational programs using functions','Write programs to compute mathematical functions','Write data processing scripts using string and dictionaries','Write classes using OOP features including inheritance','Apply NumPy package for data analysis','Write visualization scripts using pandas and matplotlib'];
   const title=S.courseTitle||'Introduction to Python Programming';
-  el('bos-main-title').textContent='BOS Review Dashboard — '+title;
-  el('bos-main-sub').textContent=`${S.courseCode||'B22EFS415'}  ·  ${S.courseBranch||'CSE'}  ·  ${S.courseSem||'IV Semester'}`;
+  el('bos-main-title-bos').textContent='BOS Review Dashboard — '+title;
+  el('bos-main-sub-bos').textContent=`${S.courseCode||'B22EFS415'}  ·  ${S.courseBranch||'CSE'}  ·  ${S.courseSem||'IV Semester'}`;
   el('bos-course-badge').textContent=title;
-  el('bos-score-grid').innerHTML=scoreCard(cos.length+'','Course Outcomes<br>in Updated Course','↑ +1 from previous','trend-up')+scoreCard(S.modStats.modPct||22+'%','Modification %<br>from Previous','vs original syllabus','trend-up')+scoreCard('4','Units in Updated<br>Syllabus','Unchanged','trend-same')+scoreCard('Pending','Benchmark<br>Comparison','Upload doc to compare','trend-same');
+  el('bos-score-grid-bos').innerHTML=scoreCard(cos.length+'','Course Outcomes<br>in Updated Course','↑ +1 from previous','trend-up')+scoreCard(S.modStats.modPct||22+'%','Modification %<br>from Previous','vs original syllabus','trend-up')+scoreCard('4','Units in Updated<br>Syllabus','Unchanged','trend-same')+scoreCard('Pending','Benchmark<br>Comparison','Upload doc to compare','trend-same');
   const prevCOs=['Write Python programs using basic constructs','Use control structures and functions','Implement string operations','Use OOP concepts','Work with files','Use NumPy for data processing'];
-  el('col-prev-body').innerHTML=colRow('Course Name',title)+colRow('COs',prevCOs.length+' outcomes')+colRow('Units','4 units')+colRow('Credits','3')+colRow('Bloom\'s Range','L2 – L3','warning')+colRow('AICTE Status','Compliant');
-  el('col-new-body').innerHTML=colRow('Course Name',title+' (Updated)')+colRow('COs',cos.length+' outcomes','highlight')+colRow('Units','4 units')+colRow('Credits','3')+colRow('Bloom\'s Range','L2 – L4','highlight')+colRow('AICTE Status','Compliant ✓','highlight');
-  el('col-bench-body').innerHTML=`<div style="text-align:center;padding:24px;color:#2A4A8C;font-size:12px;line-height:1.6">Upload a benchmark syllabus PDF from VTU, IIT, NITK or any university to compare</div>`;
+  el('col-prev-body-bos').innerHTML=colRow('Course Name',title)+colRow('COs',prevCOs.length+' outcomes')+colRow('Units','4 units')+colRow('Credits','3')+colRow('Bloom\'s Range','L2 – L3','warning')+colRow('AICTE Status','Compliant');
+  el('col-new-body-bos').innerHTML=colRow('Course Name',title+' (Updated)')+colRow('COs',cos.length+' outcomes','highlight')+colRow('Units','4 units')+colRow('Credits','3')+colRow('Bloom\'s Range','L2 – L4','highlight')+colRow('AICTE Status','Compliant ✓','highlight');
+  el('col-bench-body-bos').innerHTML=`<div style="text-align:center;padding:24px;color:#2A4A8C;font-size:12px;line-height:1.6">Upload a benchmark syllabus PDF from VTU, IIT, NITK or any university to compare</div>`;
   renderCODiffTable(false);
   renderBloomsChart(false);
   renderTopicGrid(false);
   renderBOSMatrix();
-  renderRecCard();
-}
-
-function scoreCard(num,lbl,trend,trendClass){return`<div class="score-card"><div class="score-num" style="color:#3A86FF">${num}</div><div class="score-lbl">${lbl}</div><div class="score-trend ${trendClass}">${trend}</div></div>`;}
-
-function renderCODiffTable(showBench){
-  const prevCOs=['Write Python programs using basic constructs','Use control structures and functions','Implement string operations','Use OOP concepts','Work with files','Use NumPy for data processing'];
-  const cos=S.cos.length?S.cos:['Write computational programs using functions','Compute mathematical functions using loops','Process data using string and dictionaries','Write classes using OOP and inheritance','Apply NumPy for data analysis','Write visualization scripts using pandas'];
-  const benchCOs=['Define network security concepts','Explain cryptographic algorithms','Apply security protocols','Analyze vulnerabilities','Design secure architectures','Evaluate security policies'];
-  const rows=Math.max(prevCOs.length,cos.length);
-  let html=`<thead><tr><th style="color:#6B8EC7">CO</th><th style="color:#3A86FF">Previous Course</th><th style="color:#1D9E75">Updated Course</th>${showBench?`<th style="color:var(--gold)">Benchmark</th>`:''}<th style="color:#6B8EC7">Change</th></tr></thead><tbody>`;
-  for(let i=0;i<rows;i++){
-    const prev=prevCOs[i]||null,curr=cos[i]||null,bench=benchCOs[i]||null;
-    const change=!prev?'cp-added':curr&&prev&&curr!==prev?'cp-modified':'cp-same';
-    const changeLbl=!prev?'New CO':curr&&prev&&curr!==prev?'Modified':'Unchanged';
-    html+=`<tr><td style="color:#B5D4F4">CO${i+1}</td><td class="cdt-prev">${prev||'<span class="cdt-na">—</span>'}</td><td class="cdt-new">${curr||'<span class="cdt-na">—</span>'}</td>${showBench?`<td class="cdt-bench">${bench||'<span class="cdt-na">Not found</span>'}</td>`:''}<td><span class="change-pill ${change}">${changeLbl}</span></td></tr>`;
-  }
-  el('co-diff-table').innerHTML=html+'</tbody>';
-}
-
-function renderBloomsChart(showBench){
-  const cos=S.cos.length?S.cos:['Write computational programs','Compute functions using loops','Process data using dictionaries','Write classes using OOP','Apply NumPy for analysis','Write visualization scripts'];
-  const labels=['Remember','Understand','Apply','Analyze','Evaluate','Create'];
-  const prevDist=[0,2,3,1,0,0];
-  const newDist=cos.reduce((a,co)=>{const l=dB(co)-1;a[l]=(a[l]||0)+1;return a;},[0,0,0,0,0,0]);
-  const benchDist=[1,2,1,1,1,0];
-  const maxV=Math.max(...prevDist,...newDist,...(showBench?benchDist:[1]))||1;
-  el('blooms-chart').innerHTML=labels.map((lbl,i)=>`
-    <div class="bc-row">
-      <div class="bc-label">${lbl} (L${i+1})</div>
-      <div class="bc-bars">
-        <div class="bc-bar-row"><div class="bc-bar-label">Previous</div><div class="bc-bar-track"><div class="bc-bar-fill bf-prev" style="width:${Math.round((prevDist[i]/maxV)*100)}%"></div></div><div class="bc-val">${prevDist[i]}</div></div>
-        <div class="bc-bar-row"><div class="bc-bar-label">Updated</div><div class="bc-bar-track"><div class="bc-bar-fill bf-new" style="width:${Math.round((newDist[i]/maxV)*100)}%"></div></div><div class="bc-val">${newDist[i]}</div></div>
-        ${showBench?`<div class="bc-bar-row"><div class="bc-bar-label">Benchmark</div><div class="bc-bar-track"><div class="bc-bar-fill bf-bench" style="width:${Math.round((benchDist[i]/maxV)*100)}%"></div></div><div class="bc-val">${benchDist[i]}</div></div>`:''}
-      </div>
-    </div>`).join('');
-}
-
-function renderTopicGrid(showBench){
-  const units=['Unit 1','Unit 2','Unit 3','Unit 4'];
-  const prevCov=[85,75,80,70];const newCov=[92,88,85,90];const benchCov=[80,72,78,82];
-  el('topic-grid').innerHTML=units.map((u,i)=>`
-    <div class="topic-row">
-      <div class="topic-unit">${u} — Topic Coverage</div>
-      <div class="overlap-bars">
-        <div class="ob-row"><div class="ob-label">Previous</div><div class="ob-track"><div class="ob-fill bf-prev" style="width:${prevCov[i]}%"></div></div><div class="ob-pct">${prevCov[i]}%</div></div>
-        <div class="ob-row"><div class="ob-label">Updated</div><div class="ob-track"><div class="ob-fill bf-new" style="width:${newCov[i]}%"></div></div><div class="ob-pct">${newCov[i]}%</div></div>
-        ${showBench?`<div class="ob-row"><div class="ob-label">Benchmark</div><div class="ob-track"><div class="ob-fill bf-bench" style="width:${benchCov[i]}%"></div></div><div class="ob-pct">${benchCov[i]}%</div></div>`:''}
-      </div>
-    </div>`).join('');
+        
 }
 
 function renderBOSMatrix(){
@@ -1518,7 +2336,7 @@ function renderBOSMatrix(){
   const prevRows=genCOPO(['Write Python programs','Use control structures','Implement string operations','Use OOP concepts','Work with files','Use NumPy']);
   const newRows=genCOPO(cos, S.coData.length > 0 ? S.coData : null);
   const cols=['PO1','PO2','PO3','PO5','PO12'];
-  el('bos-matrix-table').innerHTML=`
+  el('bos-matrix-table-bos').innerHTML=`
     <thead><tr><th style="text-align:left;padding-left:10px;background:#0A1628;color:#6B8EC7">CO</th>${cols.map(p=>`<th style="background:#0A1628;color:#6B8EC7">${p}</th>`).join('')}</tr></thead>
     <tbody>${newRows.map((r,i)=>{
       const pr=prevRows[i];
@@ -1542,4 +2360,5 @@ function renderRecCard(){
     <div class="rec-item"><div class="rec-item-label">CO Count</div><div class="rec-item-val highlight">${cos.length||6} COs — within AICTE recommended range (4–8)</div></div>
     <div class="rec-item"><div class="rec-item-label">Benchmark Alignment</div><div class="rec-item-val ${S.benchmarkUploaded?'highlight':'rec-warn'}">${S.benchmarkUploaded?'78% topic overlap with uploaded benchmark':'Upload benchmark document for comparison'}</div></div>`;
   el('rec-verdict').innerHTML=`<div class="rec-verdict-icon">✅</div><div><div class="rec-verdict-text">Recommended for BOS Approval — Updated course meets academic standards</div><div class="rec-verdict-sub">All COs are action-oriented · Bloom's levels appropriate for ${S.courseSem||'IV Semester'} · AICTE guidelines satisfied · ${S.modStats.modPct||22}% modification documented</div></div>`;
+
 }
